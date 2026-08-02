@@ -1,0 +1,147 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Quicksand", "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Poppins", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 14px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary-soft: var(--secondary-soft);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-blush: var(--blush);
+  --color-blush-foreground: var(--foreground);
+
+  --shadow-soft: 0 10px 30px -12px rgba(246, 169, 154, 0.35);
+  --shadow-card: 0 6px 20px -10px rgba(63, 91, 74, 0.15);
+}
+
+:root {
+  --radius: 1.1rem;
+
+  /* Athira's Creative Haven palette */
+  --background: #FFFDF9;              /* warm ivory */
+  --foreground: #3F5B4A;              /* dark forest green */
+
+  --card: #FFFFFF;
+  --card-foreground: #3F5B4A;
+  --popover: #FFFFFF;
+  --popover-foreground: #3F5B4A;
+
+  --primary: #F6A99A;                 /* soft peach */
+  --primary-foreground: #3F5B4A;
+  --primary-soft: #FDE8E2;
+
+  --secondary: #8FAF9A;               /* pastel sage green */
+  --secondary-foreground: #FFFDF9;
+  --secondary-soft: #E4EEE6;
+
+  --blush: #F8D6D0;                   /* blush pink accent */
+
+  --muted: #F6EFE9;
+  --muted-foreground: #7B8B7F;
+
+  --accent: #F8D6D0;
+  --accent-foreground: #3F5B4A;
+
+  --destructive: #D97557;
+  --destructive-foreground: #FFFDF9;
+
+  --success: #8FAF9A;
+  --success-foreground: #FFFDF9;
+
+  --warning: #E8B27A;
+  --warning-foreground: #3F5B4A;
+
+  --border: #EDE3DA;
+  --input: #F1E8DF;
+  --ring: #F6A99A;
+}
+
+.dark {
+  --background: #2B3830;
+  --foreground: #FFFDF9;
+  --card: #34433A;
+  --card-foreground: #FFFDF9;
+  --popover: #34433A;
+  --popover-foreground: #FFFDF9;
+  --primary: #F6A99A;
+  --primary-foreground: #2B3830;
+  --primary-soft: #4A3E39;
+  --secondary: #8FAF9A;
+  --secondary-foreground: #2B3830;
+  --secondary-soft: #3B4B41;
+  --blush: #F8D6D0;
+  --muted: #3B4B41;
+  --muted-foreground: #B9C4BC;
+  --accent: #4A3E39;
+  --accent-foreground: #FFFDF9;
+  --destructive: #D97557;
+  --destructive-foreground: #FFFDF9;
+  --success: #8FAF9A;
+  --success-foreground: #2B3830;
+  --warning: #E8B27A;
+  --warning-foreground: #2B3830;
+  --border: rgba(255,253,249,0.12);
+  --input: rgba(255,253,249,0.16);
+  --ring: #F6A99A;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+}
+
+@utility glass-panel {
+  background: rgba(255, 253, 249, 0.55);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(255, 253, 249, 0.6);
+}
+
+@utility no-scrollbar {
+  &::-webkit-scrollbar { display: none; }
+  scrollbar-width: none;
+}
