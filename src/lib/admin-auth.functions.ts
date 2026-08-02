@@ -9,7 +9,7 @@ export const ADMIN_EMAIL = "athiramam@ach.local";
  */
 export const ensureAdminAccount = createServerFn({ method: "POST" }).handler(async () => {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const password = process.env.ADMIN_SEED_PASSWORD || "athiramam";
+  const password = process.env.ADMIN_SEED_PASSWORD || "Athira@2003";
 
   // Find existing user by email
   let userId: string | null = null;
