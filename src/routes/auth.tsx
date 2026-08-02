@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { MailCheck } from "lucide-react";
 import logoAsset from "@/assets/ach-logo.png.asset.json";
 
 export const Route = createFileRoute("/auth")({
@@ -45,12 +46,15 @@ function AuthPage() {
     navigate({ to: "/", replace: true });
   };
 
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+
   const signUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     const fd = new FormData(e.currentTarget);
-    const { error } = await supabase.auth.signUp({
-      email: String(fd.get("email")),
+    const email = String(fd.get("email"));
+    const { data, error } = await supabase.auth.signUp({
+      email,
       password: String(fd.get("password")),
       options: {
         emailRedirectTo: window.location.origin,
@@ -59,6 +63,15 @@ function AuthPage() {
     });
     setLoading(false);
     if (error) return toast.error(error.message);
+
+    // If email confirmation is enabled in Supabase, signUp returns no session and
+    // the user must click the link in the email before the account is usable.
+    if (!data.session) {
+      setPendingEmail(email);
+      toast.success("Check your email for a confirmation link");
+      return;
+    }
+
     toast.success("Account created — you're signed in.");
     navigate({ to: "/", replace: true });
   };
@@ -67,6 +80,38 @@ function AuthPage() {
     const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
     if (result.error) toast.error("Google sign-in failed");
   };
+
+  if (pendingEmail) {
+    return (
+      <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-md place-items-center px-4 py-10">
+        <Card className="w-full rounded-3xl border-border/60 shadow-soft">
+          <CardContent className="pt-8 text-center">
+            <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-primary-soft">
+              <MailCheck className="h-8 w-8 text-primary" />
+            </div>
+            <h1 className="font-display text-2xl">Check your email</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              We sent a confirmation link to <span className="font-medium text-foreground">{pendingEmail}</span>.
+              Click it to activate your account, then come back and sign in.
+            </p>
+            <p className="mt-4 text-xs text-muted-foreground">
+              Didn't get it? Check your spam folder, or{" "}
+              <button
+                onClick={() => setPendingEmail(null)}
+                className="text-primary underline"
+              >
+                try signing up again
+              </button>
+              .
+            </p>
+            <Button className="mt-6 w-full rounded-full" variant="secondary" onClick={() => { setPendingEmail(null); }}>
+              Back to sign in
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-md place-items-center px-4 py-10">
