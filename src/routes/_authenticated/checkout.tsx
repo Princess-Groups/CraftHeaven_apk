@@ -16,10 +16,11 @@ export const Route = createFileRoute("/_authenticated/checkout")({
   component: CheckoutPage,
 });
 
-// The merchant UPI ID for Athira's Creative Haven. Replace with the real VPA
-// (e.g. yourname@oksbi / @okhdfcbank) before going live.
-const MERCHANT_VPA = "athira.creativehaven@upi";
+// The merchant UPI ID for Athira's Creative Haven.
+const MERCHANT_VPA = "pvsdocuments-7@okaxis";
 const MERCHANT_NAME = "Athira's Creative Haven";
+// Customer's UPI QR code (also encoded in the deep-links below).
+const MERCHANT_QR = "/upi-qr.jpeg";
 
 const COUPONS: Record<string, { pct: number }> = {
   BLOOM20: { pct: 20 },
@@ -166,6 +167,18 @@ function CheckoutPage() {
                 <span className="ml-auto text-xs text-muted-foreground">Open →</span>
               </button>
             ))}
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-border/60 bg-card p-4 shadow-card">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Scan to pay</div>
+            <img
+              src={MERCHANT_QR}
+              alt="UPI QR code"
+              className="mx-auto mt-3 h-44 w-44 rounded-xl border border-border object-cover"
+            />
+            <div className="mt-3 text-xs text-muted-foreground">
+              Or pay UPI ID: <span className="font-mono font-medium text-foreground">{MERCHANT_VPA}</span>
+            </div>
           </div>
 
           <p className="mt-5 text-xs leading-relaxed text-muted-foreground">
