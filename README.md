@@ -182,7 +182,7 @@ Tip: If your app builder lets you upload reference images, you can pair this pro
 
 This project was built with [Lovable](https://lovable.dev).
 
-**Live app**: https://craft-unified-flow.lovable.app
+**Live app**: https://craft-heaven-apk.vercel.app
 
 ## Payments (UPI / GPay / PhonePe — no gateway needed)
 
@@ -214,6 +214,17 @@ Coupon codes live in the `COUPONS` map in `src/routes/_authenticated/checkout.ts
 - `public/manifest.webmanifest` + `public/icons/` → installable on Android/iOS home screens.
 - `public/sw.js` → simple offline cache (registered in production builds only).
 - App theme color / apple meta tags are set in `src/routes/__root.tsx`.
+
+## Deployment (Vercel)
+
+1. Push to GitHub → import the repo at https://vercel.com/new.
+2. Set these environment variables in Vercel (Settings → Environment Variables):
+   `SUPABASE_PROJECT_ID`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and the `VITE_`-prefixed versions.
+3. The `vite.config.ts` uses the `vercel` nitro preset, and `vercel.json` sets the build command.
+4. Before orders work, run `supabase/migrations/20260802120000_functions_only.sql`
+   in the Supabase SQL Editor (creates `place_order`, `confirm_upi_payment`, etc.).
+
+The native Android app (`capacitor.config.ts` → `server.url`) loads this deployed site.
 
 ## Build with Lovable
 
