@@ -7,7 +7,9 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // before building a release.
 //
 // NOTE: appId must stay identical for the lifetime of the Play Store listing.
-const LIVE_URL = "https://craft-unified-flow.lovable.app";
+// The app loads your deployed web app. Override the target URL at build time:
+//   $env:APP_URL="https://craft-heaven-apk.vercel.app"; npx cap sync android
+const LIVE_URL = process.env.APP_URL || "https://craft-heaven-apk.vercel.app";
 
 const config: CapacitorConfig = {
   appId: "com.athiras.creativehaven",
