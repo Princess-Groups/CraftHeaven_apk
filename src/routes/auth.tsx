@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { MailCheck } from "lucide-react";
-import logoAsset from "@/assets/ach-logo.png.asset.json";
+const logoUrl = "/ach-logo.png";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -117,7 +117,7 @@ function AuthPage() {
     <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-md place-items-center px-4 py-10">
       <Card className="w-full rounded-3xl border-border/60 shadow-soft">
         <CardHeader className="text-center">
-          <img src={logoAsset.url} alt="Athira's Creative Haven" className="mx-auto mb-2 h-20 w-20 rounded-full object-cover shadow-soft ring-1 ring-primary/20" />
+          <img src={logoUrl} alt="Athira's Creative Haven" className="mx-auto mb-2 h-20 w-20 rounded-full object-cover shadow-soft ring-1 ring-primary/20" />
           <CardTitle className="font-display text-2xl">Athira's Creative Haven</CardTitle>
           <CardDescription>Craft Supplies & Creative Classes — sign in to shop, save wishlists, and track orders.</CardDescription>
         </CardHeader>

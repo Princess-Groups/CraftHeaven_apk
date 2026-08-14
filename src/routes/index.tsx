@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ProductCard } from "@/components/product-card";
 import { Sparkles, Flame, Gift, Palette, Wand2, ChevronRight, Timer } from "lucide-react";
-import logoAsset from "@/assets/ach-logo.png.asset.json";
+const logoUrl = "/ach-logo.png";
 import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/")({
@@ -322,7 +322,7 @@ function Home() {
       </section>
 
       <footer className="mt-10 px-6 pb-4 text-center text-[11px] leading-relaxed text-muted-foreground">
-        <img src={logoAsset.url} alt="Athira's Creative Haven" className="mx-auto mb-3 h-16 w-16 rounded-full object-cover shadow-soft ring-1 ring-primary/20" />
+        <img src={logoUrl} alt="Athira's Creative Haven" className="mx-auto mb-3 h-16 w-16 rounded-full object-cover shadow-soft ring-1 ring-primary/20" />
         <div className="mb-1 font-display text-sm text-foreground">Athira's Creative Haven</div>
         Craft Supplies & Creative Classes · Made with love
       </footer>

@@ -8,7 +8,7 @@ import {
   Bell, LogOut, Menu, X,
 } from "lucide-react";
 import { useState } from "react";
-import logoAsset from "@/assets/ach-logo.png.asset.json";
+const logoUrl = "/ach-logo.png";
 
 export const Route = createFileRoute("/admin")({
   ssr: false,
@@ -68,7 +68,7 @@ function AdminLayout() {
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 border-r border-slate-200 bg-white transition-transform lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
-          <img src={logoAsset.url} alt="ACH" className="h-9 w-9 rounded-full ring-1 ring-slate-200" />
+          <img src={logoUrl} alt="ACH" className="h-9 w-9 rounded-full ring-1 ring-slate-200" />
           <div className="leading-tight">
             <div className="text-[13px] font-bold text-slate-900">ACH Admin</div>
             <div className="text-[10px] uppercase tracking-wider text-slate-500">Billing Software</div>

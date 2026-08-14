@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Search, Bell } from "lucide-react";
 import { useState } from "react";
-import logoAsset from "@/assets/ach-logo.png.asset.json";
+const logoUrl = "/ach-logo.png";
 
 export function SiteHeader() {
   const [q, setQ] = useState("");
@@ -11,7 +11,7 @@ export function SiteHeader() {
       <div className="mx-auto flex max-w-md items-center gap-2 px-4 py-3">
         <Link to="/" className="flex items-center gap-2">
           <img
-            src={logoAsset.url}
+            src={logoUrl}
             alt="Athira's Creative Haven logo"
             className="h-11 w-11 rounded-full object-cover shadow-soft ring-1 ring-primary/20"
           />

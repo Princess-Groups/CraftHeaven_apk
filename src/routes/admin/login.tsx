@@ -3,7 +3,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Lock, User as UserIcon, ShieldCheck, KeyRound, Loader2 } from "lucide-react";
-import logoAsset from "@/assets/ach-logo.png.asset.json";
+const logoUrl = "/ach-logo.png";
 import { ensureAdminAccount, createAdminAccount, ADMIN_USER_ID, ADMIN_EMAIL } from "@/lib/admin-auth.functions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
@@ -98,7 +98,7 @@ function AdminLogin() {
       <div className="w-full max-w-md">
         <div className="rounded-3xl bg-white shadow-xl border border-slate-200/70 overflow-hidden">
           <div className="bg-gradient-to-br from-secondary/90 to-primary/90 px-6 py-8 text-center text-white">
-            <img src={logoAsset.url} alt="ACH" className="mx-auto h-14 w-14 rounded-full ring-2 ring-white/60 shadow-lg" />
+            <img src={logoUrl} alt="ACH" className="mx-auto h-14 w-14 rounded-full ring-2 ring-white/60 shadow-lg" />
             <h1 className="mt-3 font-display text-xl font-bold">Billing Software</h1>
             <p className="mt-1 text-xs opacity-90">Athira's Creative Haven — Admin Portal</p>
           </div>

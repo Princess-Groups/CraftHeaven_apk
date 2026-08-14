@@ -54,3 +54,6 @@ capacitor.config.json
 *.njsproj
 *.sln
 *.sw?
+
+.vercel
+.env*

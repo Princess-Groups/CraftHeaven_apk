@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Search, Plus, Minus, Trash2, ScanBarcode, Printer, IndianRupee, X } from "lucide-react";
-import logoAsset from "@/assets/ach-logo.png.asset.json";
+const logoUrl = "/ach-logo.png";
 
 export const Route = createFileRoute("/admin/pos")({
   head: () => ({ meta: [{ title: "POS Billing — ACH Admin" }] }),
@@ -225,7 +225,7 @@ function Invoice({ orderId, at, onDone }: { orderId: string; at: string; onDone:
       </div>
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm print:border-0 print:shadow-none">
         <div className="text-center border-b border-dashed border-slate-300 pb-3">
-          <img src={logoAsset.url} alt="ACH" className="mx-auto h-12 w-12 rounded-full" />
+          <img src={logoUrl} alt="ACH" className="mx-auto h-12 w-12 rounded-full" />
           <div className="mt-2 font-display text-base font-bold">ATHIRA'S CREATIVE HAVEN</div>
           <div className="text-[10px] text-slate-500">Craft Supplies & Creative Classes</div>
           <div className="mt-1 text-[10px] text-slate-500">Tax Invoice</div>
