@@ -2,8 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
-import { Plus, Edit3, Trash2, Search } from "lucide-react";
+import { Plus, Edit3, Trash2, Search, Upload, Image, X } from "lucide-react";
 import { toast } from "sonner";
+import { uploadProductImage, deleteProductImages } from "@/lib/upload";
 
 export const Route = createFileRoute("/admin/products")({
   head: () => ({ meta: [{ title: "Products — ACH Admin" }] }),
@@ -20,6 +21,7 @@ function Products() {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
 
   const { data: products } = useQuery({
     queryKey: ["admin-products", q],
@@ -61,8 +63,19 @@ function Products() {
 
   async function del(id: string) {
     if (!confirm("Delete this product?")) return;
+
+    // First, get the product to find its images
+    const { data: product } = await supabase.from("products").select("image_urls").eq("id", id).single();
+
+    // Delete the product
     const { error } = await supabase.from("products").delete().eq("id", id);
     if (error) return toast.error(error.message);
+
+    // Delete associated images from storage
+    if (product?.image_urls?.length) {
+      await deleteProductImages(product.image_urls);
+    }
+
     toast.success("Deleted");
     qc.invalidateQueries({ queryKey: ["admin-products"] });
   }
@@ -143,8 +156,89 @@ function Products() {
                   {(categories ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </Field>
-              <Field label="Image URL" className="col-span-2">
-                <input value={editing.image_urls?.[0] ?? ""} onChange={(e) => setEditing({ ...editing, image_urls: e.target.value ? [e.target.value] : [] })} className={inputCls} placeholder="https://…" />
+              <Field label="Product Image" className="col-span-2">
+                <div className="space-y-2">
+                  {/* Current image preview */}
+                  {editing.image_urls?.[0] && (
+                    <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg">
+                      <img
+                        src={editing.image_urls[0]}
+                        alt="Current"
+                        className="h-16 w-16 object-cover rounded"
+                      />
+                      <span className="text-sm text-slate-600 flex-1">Current image</span>
+                      <button
+                        type="button"
+                        onClick={() => setEditing({ ...editing, image_urls: [] })}
+                        className="text-rose-600 hover:text-rose-700 text-sm font-medium"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Upload area */}
+                  <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-secondary hover:bg-slate-50 transition-colors">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        // Validate file type
+                        if (!file.type.startsWith("image/")) {
+                          toast.error("Please select an image file");
+                          return;
+                        }
+
+                        // Validate file size (5MB)
+                        if (file.size > 5 * 1024 * 1024) {
+                          toast.error("Image must be less than 5MB");
+                          return;
+                        }
+
+                        setUploading(file.name);
+                        try {
+                          const imageUrl = await uploadProductImage(file, editing.id || undefined);
+                          setEditing({ ...editing, image_urls: [imageUrl] });
+                          toast.success("Image uploaded successfully");
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : "Failed to upload image");
+                        } finally {
+                          setUploading(null);
+                          // Reset the input so the same file can be uploaded again if needed
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                    {uploading ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-secondary border-t-transparent" />
+                        <span className="text-sm text-slate-600">Uploading {uploading}...</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2">
+                        <Upload className="h-8 w-8 text-slate-400" />
+                        <span className="text-sm font-medium text-slate-700">Click to upload or drag & drop</span>
+                        <span className="text-xs text-slate-500">PNG, JPG, WebP up to 5MB</span>
+                      </div>
+                    )}
+                  </label>
+
+                  {/* Or URL input */}
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">����</span>
+                    <input
+                      type="url"
+                      value={editing.image_urls?.[0] ?? ""}
+                      onChange={(e) => setEditing({ ...editing, image_urls: e.target.value ? [e.target.value] : [] })}
+                      className={`${inputCls} pl-9`}
+                      placeholder="Or enter image URL (https://...)"
+                    />
+                  </div>
+                </div>
               </Field>
               <label className="col-span-2 flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={editing.is_available ?? true} onChange={(e) => setEditing({ ...editing, is_available: e.target.checked })} />

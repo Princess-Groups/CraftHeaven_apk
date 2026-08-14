@@ -47,8 +47,7 @@ function AdminLayout() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
-  if (pathname === "/admin/login") return <Outlet />;
-
+  // Always call the hook - just disable it on login page
   const { data: notifCount } = useQuery({
     queryKey: ["admin-notif-count"],
     queryFn: async () => {
@@ -56,7 +55,10 @@ function AdminLayout() {
       return count ?? 0;
     },
     refetchInterval: 30000,
+    enabled: pathname !== "/admin/login",
   });
+
+  if (pathname === "/admin/login") return <Outlet />;
 
   async function signOut() {
     await supabase.auth.signOut();
