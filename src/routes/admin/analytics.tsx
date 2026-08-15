@@ -8,7 +8,7 @@ export const Route = createFileRoute("/admin/analytics")({
   component: Analytics,
 });
 
-const COLORS = ["#F6A99A", "#8FAF9A", "#F8D6D0", "#E8B0A0", "#B4C9BB"];
+const COLORS = ["#285A48", "#214C3D", "#9DB8A0", "#DCE8DA", "#E8EFE5"];
 
 function Analytics() {
   const { data } = useQuery({
@@ -38,7 +38,7 @@ function Analytics() {
               <CartesianGrid strokeDasharray="3 3" stroke="#eef2f6" />
               <XAxis type="number" tick={{ fontSize: 10 }} />
               <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10 }} />
-              <Tooltip /><Bar dataKey="qty" fill="#8FAF9A" radius={[0, 6, 6, 0]} />
+              <Tooltip /><Bar dataKey="qty" fill="#285A48" radius={[0, 6, 6, 0]} />
             </BarChart></ResponsiveContainer>
           </div>
         </div>

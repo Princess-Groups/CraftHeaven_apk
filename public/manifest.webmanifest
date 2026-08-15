@@ -4,8 +4,8 @@
   "description": "Shop resin art, crochet, yarn, painting, DIY kits and creative classes — beautifully packed and delivered.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FFFDF9",
-  "theme_color": "#F6A99A",
+  "background_color": "#F7F6F0",
+  "theme_color": "#285A48",
   "lang": "en",
   "orientation": "portrait",
   "icons": [

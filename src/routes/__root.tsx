@@ -48,7 +48,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Athira's Creative Haven — Craft Supplies & Creative Classes" },
-      { name: "theme-color", content: "#F6A99A" },
+      { name: "theme-color", content: "#285A48" },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "default" },
@@ -107,7 +107,7 @@ function RootComponent() {
       {isAdmin ? (
         <Outlet />
       ) : (
-        <div className="flex min-h-screen flex-col bg-background">
+        <div className="flex min-h-screen flex-col">
           <SiteHeader />
           <main className="flex-1 pb-24"><Outlet /></main>
           <BottomNav />

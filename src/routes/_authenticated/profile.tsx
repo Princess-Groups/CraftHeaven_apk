@@ -30,7 +30,7 @@ function ProfilePage() {
   return (
     <div className="mx-auto max-w-md">
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary via-blush to-secondary-soft" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#9DB8A0] via-[#C8D8C5] to-[#E8EFE5]" />
         <div className="pointer-events-none absolute -right-6 -top-8 h-32 w-32 rounded-full bg-background/25 blur-2xl" />
         <div className="relative flex items-center gap-4 px-5 pb-8 pt-6">
           <div className="grid h-16 w-16 place-items-center rounded-full bg-background text-2xl font-display font-semibold text-primary shadow-soft">

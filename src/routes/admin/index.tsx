@@ -117,7 +117,7 @@ function Dashboard() {
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip formatter={(v: number) => inr(v)} />
-                <Line type="monotone" dataKey="total" stroke="#8FAF9A" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="total" stroke="#285A48" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -130,7 +130,7 @@ function Dashboard() {
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip formatter={(v: number) => inr(v)} />
-                <Bar dataKey="total" fill="#F6A99A" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="total" fill="#285A48" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -152,7 +152,7 @@ function Dashboard() {
 function Kpi({ label, value, icon: Icon, tone }: { label: string; value: string | number; icon: React.ElementType; tone: string }) {
   const tones: Record<string, string> = {
     emerald: "bg-emerald-50 text-emerald-700",
-    peach: "bg-orange-50 text-orange-700",
+    peach: "bg-green-50 text-green-700",
     sky: "bg-sky-50 text-sky-700",
     amber: "bg-amber-50 text-amber-700",
     rose: "bg-rose-50 text-rose-700",

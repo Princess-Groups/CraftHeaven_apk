@@ -90,7 +90,7 @@ function CategoriesPage() {
           <section className="mt-6 pb-6">
             <h2 className="mb-3 font-display text-lg font-semibold">All Categories</h2>
             <div className="grid grid-cols-2 gap-3">
-              {categories?.map((c, i) => (
+              {categories?.map((c) => (
                 <Link
                   key={c.id}
                   to="/category/$slug"
@@ -98,9 +98,9 @@ function CategoriesPage() {
                   className="group relative overflow-hidden rounded-2xl shadow-card"
                 >
                   <img src={c.image_url ?? ""} alt={c.name} className="aspect-[4/5] w-full object-cover transition duration-500 group-hover:scale-105" />
-                  <div className={`absolute inset-0 bg-gradient-to-t ${i % 3 === 0 ? "from-primary/80" : i % 3 === 1 ? "from-secondary/80" : "from-blush/80"} via-transparent to-transparent`} />
-                  <div className="absolute inset-x-2 bottom-2 rounded-xl glass-panel px-3 py-1.5">
-                    <div className="text-sm font-semibold">{c.name}</div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#8FAF94]/70 via-[#DCE8DA]/30 to-transparent" />
+                  <div className="absolute inset-x-2 bottom-2 rounded-xl bg-[#DCE8DA] px-3 py-1.5">
+                    <div className="text-sm font-semibold text-foreground">{c.name}</div>
                   </div>
                 </Link>
               ))}

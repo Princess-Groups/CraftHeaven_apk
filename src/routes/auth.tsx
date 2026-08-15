@@ -117,7 +117,9 @@ function AuthPage() {
     <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-md place-items-center px-4 py-10">
       <Card className="w-full rounded-3xl border-border/60 shadow-soft">
         <CardHeader className="text-center">
-          <img src={logoUrl} alt="Athira's Creative Haven" className="mx-auto mb-2 h-20 w-20 rounded-full object-cover shadow-soft ring-1 ring-primary/20" />
+          <span className="mx-auto mb-2 grid h-20 w-20 place-items-center rounded-full bg-[#DCE8DA]">
+            <img src={logoUrl} alt="Athira's Creative Haven" className="h-20 w-20 rounded-full object-cover" />
+          </span>
           <CardTitle className="font-display text-2xl">Athira's Creative Haven</CardTitle>
           <CardDescription>Craft Supplies & Creative Classes — sign in to shop, save wishlists, and track orders.</CardDescription>
         </CardHeader>

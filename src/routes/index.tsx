@@ -26,7 +26,7 @@ const HERO_SLIDES = [
     cta: "Shop Resin Art",
     to: "/category/$slug",
     slug: "resin-art",
-    grad: "from-primary via-blush to-secondary",
+    grad: "from-[#9DB8A0] via-[#C8D8C5] to-[#E8EFE5]",
   },
   {
     tag: "Learn with us",
@@ -35,7 +35,7 @@ const HERO_SLIDES = [
     cta: "Join a class",
     to: "/category/$slug",
     slug: "creative-classes",
-    grad: "from-secondary via-blush to-primary",
+    grad: "from-[#9DB8A0] via-[#C8D8C5] to-[#E8EFE5]",
   },
   {
     tag: "Handpicked",
@@ -44,7 +44,7 @@ const HERO_SLIDES = [
     cta: "Shop Gifts",
     to: "/category/$slug",
     slug: "handmade-gifts",
-    grad: "from-blush via-primary to-secondary",
+    grad: "from-[#9DB8A0] via-[#C8D8C5] to-[#E8EFE5]",
   },
 ];
 
@@ -61,17 +61,17 @@ function HeroSlider() {
           {HERO_SLIDES.map((s) => (
             <div key={s.slug} className={`min-w-full bg-gradient-to-br ${s.grad} p-6`}>
               <div className="relative flex min-h-[190px] flex-col">
-                <span className="inline-flex w-fit items-center gap-1 rounded-full glass-panel px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-foreground">
+                <span className="inline-flex w-fit items-center gap-1 rounded-full bg-[#F7F6F0]/85 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
                   <Sparkles className="h-3 w-3" /> {s.tag}
                 </span>
-                <h2 className="mt-3 whitespace-pre-line font-display text-3xl font-semibold leading-[1.05] text-foreground">
+                <h2 className="mt-3 whitespace-pre-line font-display text-3xl font-bold leading-[1.05] text-foreground">
                   {s.title}
                 </h2>
-                <p className="mt-2 text-sm text-foreground/80">{s.sub}</p>
+                <p className="mt-2 text-sm font-medium text-foreground/80">{s.sub}</p>
                 <Link
                   to={s.to}
                   params={{ slug: s.slug }}
-                  className="mt-auto inline-flex w-fit items-center gap-1 rounded-full bg-foreground px-4 py-2 text-xs font-semibold text-background shadow-soft"
+                  className="mt-auto inline-flex w-fit items-center gap-1 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-soft"
                 >
                   {s.cta} <ChevronRight className="h-3.5 w-3.5" />
                 </Link>
@@ -83,7 +83,7 @@ function HeroSlider() {
         </div>
         <div className="absolute inset-x-0 bottom-2 flex justify-center gap-1.5">
           {HERO_SLIDES.map((_, idx) => (
-            <span key={idx} className={`h-1.5 rounded-full transition-all ${idx === i ? "w-6 bg-foreground" : "w-1.5 bg-foreground/40"}`} />
+            <span key={idx} className={`h-1.5 rounded-full transition-all ${idx === i ? "w-6 bg-foreground" : "w-1.5 bg-secondary/40"}`} />
           ))}
         </div>
       </div>
@@ -102,9 +102,9 @@ function SectionHeader({ icon: Icon, title, hint, to, slug }: { icon: any; title
         </div>
       </div>
       {to && slug ? (
-        <Link to="/category/$slug" params={{ slug }} className="text-xs font-medium text-secondary">See all</Link>
+        <Link to="/category/$slug" params={{ slug }} className="text-xs font-medium text-primary">See all</Link>
       ) : (
-        <Link to="/categories" className="text-xs font-medium text-secondary">See all</Link>
+        <Link to="/categories" className="text-xs font-medium text-primary">See all</Link>
       )}
     </div>
   );
@@ -136,7 +136,7 @@ function FlashSale({ products }: { products: any[] }) {
   if (!products?.length) return null;
   return (
     <section className="mt-6">
-      <div className="mx-4 rounded-3xl bg-gradient-to-br from-primary via-blush to-secondary-soft p-4 shadow-soft">
+      <div className="mx-4 rounded-3xl bg-gradient-to-br from-[#9DB8A0] via-[#DCE8DA] to-[#E8EFE5] p-4 shadow-soft">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Flame className="h-5 w-5 text-foreground" />
@@ -196,9 +196,9 @@ function Home() {
                 className="group relative overflow-hidden rounded-2xl shadow-card"
               >
                 <img src={c.image_url ?? ""} alt={c.name} className="aspect-[5/4] w-full object-cover transition duration-500 group-hover:scale-105" />
-                <div className={`absolute inset-0 bg-gradient-to-t ${idx % 2 === 0 ? "from-primary/70" : "from-secondary/70"} via-transparent to-transparent`} />
-                <div className="absolute inset-x-2 bottom-2 rounded-xl glass-panel px-3 py-1.5">
-                  <div className="text-[13px] font-semibold">{c.name}</div>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#8FAF94]/70 via-[#DCE8DA]/30 to-transparent" />
+                <div className="absolute inset-x-2 bottom-2 rounded-xl bg-[#DCE8DA] px-3 py-1.5">
+                  <div className="text-[13px] font-semibold text-foreground">{c.name}</div>
                 </div>
               </Link>
             ))}
@@ -230,17 +230,17 @@ function Home() {
 
       {/* Exclusive Offers banner */}
       <section className="mt-6 px-4">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-secondary to-secondary-soft p-5 shadow-card">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#285A48] to-[#9DB8A0] p-5 shadow-card">
           <div className="relative z-10 max-w-[65%]">
-            <span className="inline-flex items-center gap-1 rounded-full bg-background/70 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary">
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/85 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
               <Gift className="h-3 w-3" /> Exclusive
             </span>
-            <h3 className="mt-2 font-display text-lg font-semibold leading-tight text-secondary-foreground">
+            <h3 className="mt-2 font-display text-lg font-semibold leading-tight text-white">
               Flat 20% off on your first creative kit
             </h3>
-            <p className="mt-1 text-[11px] text-secondary-foreground/85">Use code BLOOM20 at checkout</p>
+            <p className="mt-1 text-[11px] text-white/85">Use code BLOOM20 at checkout</p>
           </div>
-          <div className="pointer-events-none absolute -right-4 -top-4 h-28 w-28 rounded-full bg-blush/70 blur-xl" />
+          <div className="pointer-events-none absolute -right-4 -top-4 h-28 w-28 rounded-full bg-white/20 blur-xl" />
         </div>
       </section>
 
@@ -322,7 +322,9 @@ function Home() {
       </section>
 
       <footer className="mt-10 px-6 pb-4 text-center text-[11px] leading-relaxed text-muted-foreground">
-        <img src={logoUrl} alt="Athira's Creative Haven" className="mx-auto mb-3 h-16 w-16 rounded-full object-cover shadow-soft ring-1 ring-primary/20" />
+        <span className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-full bg-[#DCE8DA]">
+          <img src={logoUrl} alt="Athira's Creative Haven" className="h-16 w-16 rounded-full object-cover" />
+        </span>
         <div className="mb-1 font-display text-sm text-foreground">Athira's Creative Haven</div>
         Craft Supplies & Creative Classes · Made with love
       </footer>
