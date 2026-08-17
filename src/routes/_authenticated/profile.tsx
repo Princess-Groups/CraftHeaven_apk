@@ -48,7 +48,7 @@ function ProfilePage() {
         </div>
       </section>
 
-      <section className="-mt-4 px-4">
+      <section className="mt-4 px-4">
         <div className="grid grid-cols-3 gap-2 rounded-2xl bg-card p-3 shadow-card">
           <Link to="/orders" className="flex flex-col items-center gap-1 py-1">
             <Package className="h-5 w-5 text-primary" />
