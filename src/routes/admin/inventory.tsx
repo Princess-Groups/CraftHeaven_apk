@@ -50,11 +50,12 @@ function Inventory() {
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
-            <tr><th className="p-3 text-left">Product</th><th className="p-3">SKU</th><th className="p-3 text-right">Current Stock</th><th className="p-3 text-right">Reorder Level</th><th className="p-3">Adjust</th></tr>
+            <tr><th className="p-3 text-left">S.No.</th><th className="p-3 text-left">Product</th><th className="p-3">SKU</th><th className="p-3 text-right">Current Stock</th><th className="p-3 text-right">Reorder Level</th><th className="p-3">Adjust</th></tr>
           </thead>
           <tbody>
-            {filtered.map((p) => (
+            {filtered.map((p, i) => (
               <tr key={p.id} className="border-t border-slate-100">
+                <td className="p-3 text-xs font-semibold text-slate-500 w-10">{i + 1}</td>
                 <td className="p-3 font-medium">{p.name}</td>
                 <td className="p-3 text-xs text-slate-500 text-center">{p.sku ?? "—"}</td>
                 <td className={`p-3 text-right font-bold ${p.stock <= 0 ? "text-rose-600" : p.stock <= p.reorder_level ? "text-amber-600" : "text-emerald-600"}`}>{p.stock}</td>
@@ -67,7 +68,7 @@ function Inventory() {
                 </td>
               </tr>
             ))}
-            {!filtered.length && <tr><td colSpan={5} className="p-8 text-center text-xs text-slate-400">No products match</td></tr>}
+            {!filtered.length && <tr><td colSpan={6} className="p-8 text-center text-xs text-slate-400">No products match</td></tr>}
           </tbody>
         </table>
       </div>

@@ -59,11 +59,12 @@ function Orders() {
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
-            <tr><th className="p-3 text-left">Order</th><th className="p-3 text-left">Date</th><th className="p-3 text-right">Total</th><th className="p-3">Payment</th><th className="p-3">Status</th></tr>
+            <tr><th className="p-3 text-left">S.No.</th><th className="p-3 text-left">Order</th><th className="p-3 text-left">Date</th><th className="p-3 text-right">Total</th><th className="p-3">Payment</th><th className="p-3">Status</th></tr>
           </thead>
           <tbody>
-            {(orders ?? []).map((o) => (
+            {(orders ?? []).map((o, i) => (
               <tr key={o.id} className="border-t border-slate-100">
+                <td className="p-3 text-xs font-semibold text-slate-500 w-10">{i + 1}</td>
                 <td className="p-3 font-mono text-xs">#{o.id.slice(0, 8).toUpperCase()}</td>
                 <td className="p-3 text-xs text-slate-600">{new Date(o.created_at).toLocaleString()}</td>
                 <td className="p-3 text-right font-semibold">₹{Number(o.total).toFixed(2)}</td>
@@ -76,7 +77,7 @@ function Orders() {
                 </td>
               </tr>
             ))}
-            {!orders?.length && <tr><td colSpan={5} className="p-8 text-center text-xs text-slate-400">No orders</td></tr>}
+            {!orders?.length && <tr><td colSpan={6} className="p-8 text-center text-xs text-slate-400">No orders</td></tr>}
           </tbody>
         </table>
       </div>

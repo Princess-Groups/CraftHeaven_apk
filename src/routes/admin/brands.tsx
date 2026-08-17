@@ -29,9 +29,9 @@ function Brands() {
         <button onClick={add} className="flex items-center gap-1 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white"><Plus className="h-3.5 w-3.5" /> Add</button>
       </div>
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        {(data ?? []).map((b) => (
+        {(data ?? []).map((b, i) => (
           <div key={b.id} className="flex items-center justify-between border-b border-slate-100 p-3 last:border-0">
-            <div className="text-sm">{b.name}</div>
+            <div className="text-sm"><span className="mr-3 inline-block w-6 text-xs font-semibold text-slate-400">{i + 1}</span>{b.name}</div>
             <button onClick={async () => { await supabase.from("brands").delete().eq("id", b.id); qc.invalidateQueries({ queryKey: ["brands"] }); }} className="text-rose-500"><Trash2 className="h-4 w-4" /></button>
           </div>
         ))}

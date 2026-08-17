@@ -44,9 +44,37 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
+// Stable webhook endpoint for the IndusInd payment gateway. A createServerFn
+// can't serve this — the gateway has no Supabase session and can't satisfy the
+// CSRF middleware. Intercept the request here, before TanStack routing.
+const PAYMENT_CALLBACK_PATH = "/api/payment/callback";
+
+async function handlePaymentCallback(request: Request): Promise<Response> {
+  try {
+    const contentType = request.headers.get("content-type") ?? "";
+    let body: Record<string, unknown>;
+    if (contentType.includes("application/json")) {
+      body = (await request.json().catch(() => null)) ?? {};
+    } else {
+      const form = await request.formData().catch(() => null);
+      body = form ? Object.fromEntries(form.entries()) : {};
+    }
+    const { processGatewayCallback } = await import("./lib/payment.functions");
+    const result = await processGatewayCallback(body);
+    return Response.json(result);
+  } catch (error) {
+    console.error("[payment] webhook error", error);
+    return Response.json({ ok: false, error: error instanceof Error ? error.message : "error" }, { status: 400 });
+  }
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      // Payment gateway webhook — handled before TanStack routing (see above).
+      if (new URL(request.url).pathname === PAYMENT_CALLBACK_PATH) {
+        return await handlePaymentCallback(request);
+      }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);

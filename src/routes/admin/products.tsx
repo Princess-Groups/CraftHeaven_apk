@@ -97,11 +97,12 @@ function Products() {
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
-            <tr><th className="p-3 text-left">Product</th><th className="p-3 text-left">SKU</th><th className="p-3 text-right">Price</th><th className="p-3 text-right">Stock</th><th className="p-3 text-left">Status</th><th className="p-3 w-24"></th></tr>
+            <tr><th className="p-3 text-left">S.No.</th><th className="p-3 text-left">Product</th><th className="p-3 text-left">SKU</th><th className="p-3 text-right">Price</th><th className="p-3 text-right">Stock</th><th className="p-3 text-left">Status</th><th className="p-3 w-24"></th></tr>
           </thead>
           <tbody>
-            {(products ?? []).map((p) => (
+            {(products ?? []).map((p, i) => (
               <tr key={p.id} className="border-t border-slate-100">
+                <td className="p-3 text-xs font-semibold text-slate-500 w-10">{i + 1}</td>
                 <td className="p-3">
                   <div className="flex items-center gap-3">
                     <div className="h-9 w-9 overflow-hidden rounded-lg bg-slate-100">
@@ -129,7 +130,7 @@ function Products() {
                 </td>
               </tr>
             ))}
-            {!products?.length && <tr><td colSpan={6} className="p-8 text-center text-xs text-slate-400">No products yet</td></tr>}
+            {!products?.length && <tr><td colSpan={7} className="p-8 text-center text-xs text-slate-400">No products yet</td></tr>}
           </tbody>
         </table>
       </div>

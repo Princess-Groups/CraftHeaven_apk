@@ -42,10 +42,11 @@ function Users() {
       <h1 className="text-xl font-bold">Users & Staff</h1>
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-[11px] uppercase text-slate-500"><tr><th className="p-3 text-left">User</th><th className="p-3">Roles</th><th className="p-3">Grant</th></tr></thead>
+          <thead className="bg-slate-50 text-[11px] uppercase text-slate-500"><tr><th className="p-3 text-left">S.No.</th><th className="p-3 text-left">User</th><th className="p-3">Roles</th><th className="p-3">Grant</th></tr></thead>
           <tbody>
-            {(data ?? []).map((u) => (
+            {(data ?? []).map((u, i) => (
               <tr key={u.id} className="border-t border-slate-100">
+                <td className="p-3 text-xs font-semibold text-slate-500 w-10">{i + 1}</td>
                 <td className="p-3">
                   <div className="flex items-center gap-2">
                     <div className="grid h-8 w-8 place-items-center rounded-full bg-slate-100"><User className="h-4 w-4 text-slate-500" /></div>
@@ -73,7 +74,7 @@ function Users() {
                 </td>
               </tr>
             ))}
-            {!data?.length && <tr><td colSpan={3} className="p-6 text-center text-xs text-slate-400">No users</td></tr>}
+            {!data?.length && <tr><td colSpan={4} className="p-6 text-center text-xs text-slate-400">No users</td></tr>}
           </tbody>
         </table>
       </div>

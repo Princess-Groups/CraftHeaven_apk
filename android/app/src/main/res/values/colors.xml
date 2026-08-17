@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App brand colors — match the web app theme (see src/styles.css). -->
+    <color name="colorPrimary">#285A48</color>
+    <color name="colorPrimaryDark">#214C3D</color>
+    <color name="colorAccent">#9DB8A0</color>
+</resources>

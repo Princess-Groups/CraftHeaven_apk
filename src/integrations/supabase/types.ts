@@ -346,6 +346,7 @@ export type Database = {
           barcode: string | null
           brand_id: string | null
           category_id: string | null
+          color: string | null
           created_at: string
           description: string | null
           discount_price: number | null
@@ -363,6 +364,7 @@ export type Database = {
           rating: number | null
           reorder_level: number
           sku: string | null
+          size: string | null
           slug: string
           stock: number
         }
@@ -370,6 +372,7 @@ export type Database = {
           barcode?: string | null
           brand_id?: string | null
           category_id?: string | null
+          color?: string | null
           created_at?: string
           description?: string | null
           discount_price?: number | null
@@ -387,6 +390,7 @@ export type Database = {
           rating?: number | null
           reorder_level?: number
           sku?: string | null
+          size?: string | null
           slug: string
           stock?: number
         }
@@ -394,6 +398,7 @@ export type Database = {
           barcode?: string | null
           brand_id?: string | null
           category_id?: string | null
+          color?: string | null
           created_at?: string
           description?: string | null
           discount_price?: number | null
@@ -411,6 +416,7 @@ export type Database = {
           rating?: number | null
           reorder_level?: number
           sku?: string | null
+          size?: string | null
           slug?: string
           stock?: number
         }
@@ -621,12 +627,110 @@ export type Database = {
           },
         ]
       }
+      payments: {
+        Row: {
+          amount: number
+          created_at: string
+          gateway: string
+          gateway_order_id: string | null
+          id: string
+          order_id: string
+          response: Json | null
+          status: string
+          txn_id: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          gateway?: string
+          gateway_order_id?: string | null
+          id?: string
+          order_id: string
+          response?: Json | null
+          status?: string
+          txn_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          gateway?: string
+          gateway_order_id?: string | null
+          id?: string
+          order_id?: string
+          response?: Json | null
+          status?: string
+          txn_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
       bootstrap_admin: { Args: never; Returns: boolean }
+      create_purchase_with_products: {
+        Args: {
+          _invoice_no?: string
+          _items: Json
+          _notes?: string
+          _purchase_date?: string
+          _supplier_id: string
+        }
+        Returns: string
+      }
+      delete_purchase_with_stock_reversal: {
+        Args: { _purchase_id: string }
+        Returns: boolean
+      }
+      update_purchase_with_products: {
+        Args: {
+          _invoice_no?: string
+          _items: Json
+          _notes?: string
+          _purchase_date?: string
+          _purchase_id: string
+          _supplier_id: string
+        }
+        Returns: boolean
+      }
+      match_or_create_product: {
+        Args: {
+          _brand_id: string
+          _category_id: string
+          _color: string
+          _name: string
+          _purchase_price: number
+          _selling_price: number
+          _size: string
+          _sku: string
+        }
+        Returns: string
+      }
+      mark_order_paid_by_gateway: {
+        Args: {
+          _gateway?: string
+          _gateway_order_id?: string
+          _order_id: string
+          _response?: Json
+          _txn_id?: string
+        }
+        Returns: boolean
+      }
       confirm_upi_payment: {
         Args: { _order_id: string; _utr: string }
         Returns: boolean

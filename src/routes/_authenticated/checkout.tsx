@@ -10,10 +10,18 @@ import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { BadgePercent, Banknote, CheckCircle2, Loader2 } from "lucide-react";
 import { UPIS_APPS, orderRef, launchUpiApp, type UpiParams } from "@/lib/upi";
+import { initiateGatewayPayment } from "@/lib/payment.functions";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/checkout")({
   component: CheckoutPage,
+  // Gateway return: ?orderId=...&status=SUCCESS|FAILED|... (picked up after
+  // the customer is redirected back from the bank's hosted page).
+  // The fields are optional so plain links to /checkout keep working.
+  validateSearch: (s: Record<string, unknown>): { orderId?: string; pgStatus?: string } => ({
+    ...(typeof s.orderId === "string" && s.orderId ? { orderId: s.orderId } : {}),
+    ...(typeof s.status === "string" && s.status ? { pgStatus: s.status } : {}),
+  }),
 });
 
 // The merchant UPI ID for Athira's Creative Haven.
@@ -31,6 +39,7 @@ type PayStep =
   | { step: "idle" }
   | { step: "placing" }
   | { step: "pay"; orderId: string; amount: number }
+  | { step: "redirecting"; orderId: string; amount: number }
   | { step: "confirming"; orderId: string }
   | { step: "done"; orderId: string };
 
@@ -114,7 +123,8 @@ function CheckoutPage() {
       qc.invalidateQueries();
       if (paymentMethod === "ONLINE") {
         const amount = subtotal - discount + deliveryFee;
-        setPayStep({ step: "pay", orderId, amount });
+        setPayStep({ step: "redirecting", orderId, amount });
+        gatewayPayment.mutate({ orderId, amount });
       } else {
         toast.success("Order placed — pay on delivery");
         navigate({ to: "/orders/$id", params: { id: orderId } });
@@ -142,6 +152,72 @@ function CheckoutPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const gatewayPayment = useMutation({
+    mutationFn: async ({ orderId, amount }: { orderId: string; amount: number }) => {
+      const { redirectUrl } = await initiateGatewayPayment({
+        data: { orderId, amount },
+      });
+      return redirectUrl;
+    },
+    onSuccess: (redirectUrl) => {
+      window.location.href = redirectUrl;
+    },
+    onError: (e: Error) => {
+      toast.error(`${e.message}. You can still pay via UPI instead.`);
+      // Fall back to the manual UPI flow if the gateway can't start the session.
+      setPayStep((prev) =>
+        prev.step === "redirecting" ? { step: "pay", orderId: prev.orderId, amount: prev.amount } : prev,
+      );
+    },
+  });
+
+  const search = Route.useSearch();
+  const gatewayReturn = search.orderId ? (
+    <div className="mx-auto max-w-md px-4 py-16 text-center">
+      {search.pgStatus?.toUpperCase() === "SUCCESS" ? (
+        <>
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-secondary-soft">
+            <CheckCircle2 className="h-8 w-8 text-success" />
+          </div>
+          <h1 className="mt-4 font-display text-2xl">Payment successful!</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Your payment was confirmed. We're packing your craft supplies.</p>
+          <Button asChild className="mt-6 rounded-full"><Link to="/orders/$id" params={{ id: search.orderId }}>Track order</Link></Button>
+        </>
+      ) : (
+        <>
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-destructive/10">
+            <Banknote className="h-8 w-8 text-destructive" />
+          </div>
+          <h1 className="mt-4 font-display text-2xl">Payment {search.pgStatus ? "failed" : "unconfirmed"}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            If your money was debited it will be refunded automatically. Check your order for the latest status.
+          </p>
+          <Button asChild className="mt-6 rounded-full"><Link to="/orders/$id" params={{ id: search.orderId }}>View order</Link></Button>
+        </>
+      )}
+    </div>
+  ) : null;
+  if (gatewayReturn) return gatewayReturn;
+
+  if (payStep.step === "redirecting") {
+    return (
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <Loader2 className="mx-auto h-8 w-8 animate-spin text-secondary" />
+        <p className="mt-4 text-sm text-muted-foreground">Taking you to the bank's secure payment page…</p>
+        <p className="mt-2 text-xs text-muted-foreground">If nothing happens, tap Cancel below to pay via UPI instead.</p>
+        <button
+          onClick={() => {
+            gatewayPayment.reset();
+            setPayStep({ step: "pay", orderId: payStep.orderId, amount: payStep.amount });
+          }}
+          className="mt-4 text-xs text-muted-foreground hover:underline"
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
 
   if (payStep.step === "pay") {
     const params: UpiParams = { vpa: MERCHANT_VPA, name: MERCHANT_NAME, amount: payStep.amount, note: `Order ${orderRef(payStep.orderId)}` };
@@ -308,7 +384,8 @@ function CheckoutPage() {
             </label>
           </RadioGroup>
           <p className="mt-2 text-xs text-muted-foreground">
-            Online payment opens GPay / PhonePe / Paytm on your phone — you approve it there and return here to confirm.
+            Online payment takes you to the bank's secure payment page (UPI, cards & netbanking). If the gateway isn't
+            available you can pay via GPay / PhonePe / Paytm and confirm your UTR instead.
           </p>
         </Card>
 

@@ -36,10 +36,11 @@ function Suppliers() {
       </div>
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-[11px] uppercase text-slate-500"><tr><th className="p-3 text-left">Name</th><th className="p-3">Phone</th><th className="p-3">Email</th><th className="p-3">GSTIN</th><th></th></tr></thead>
+          <thead className="bg-slate-50 text-[11px] uppercase text-slate-500"><tr><th className="p-3 text-left">S.No.</th><th className="p-3 text-left">Name</th><th className="p-3">Phone</th><th className="p-3">Email</th><th className="p-3">GSTIN</th><th></th></tr></thead>
           <tbody>
-            {(data ?? []).map((s) => (
+            {(data ?? []).map((s, i) => (
               <tr key={s.id} className="border-t border-slate-100">
+                <td className="p-3 text-xs font-semibold text-slate-500 w-10">{i + 1}</td>
                 <td className="p-3 font-medium">{s.name}</td>
                 <td className="p-3 text-xs text-center">{s.phone ?? "—"}</td>
                 <td className="p-3 text-xs text-center">{s.email ?? "—"}</td>
@@ -47,7 +48,7 @@ function Suppliers() {
                 <td className="p-3 text-right"><button onClick={async () => { await supabase.from("suppliers").delete().eq("id", s.id); qc.invalidateQueries({ queryKey: ["sup"] }); }} className="text-rose-500"><Trash2 className="h-4 w-4" /></button></td>
               </tr>
             ))}
-            {!data?.length && <tr><td colSpan={5} className="p-6 text-center text-xs text-slate-400">No suppliers</td></tr>}
+            {!data?.length && <tr><td colSpan={6} className="p-6 text-center text-xs text-slate-400">No suppliers</td></tr>}
           </tbody>
         </table>
       </div>
