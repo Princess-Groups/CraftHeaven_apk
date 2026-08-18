@@ -20,10 +20,15 @@ function Categories() {
 
   async function add() {
     if (!name.trim()) return;
-    const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    const slug = name
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "");
     const { error } = await supabase.from("categories").insert({ name, slug });
     if (error) return toast.error(error.message);
-    setName(""); toast.success("Added"); qc.invalidateQueries({ queryKey: ["admin-cats"] });
+    setName("");
+    toast.success("Added");
+    qc.invalidateQueries({ queryKey: ["admin-cats"] });
   }
   async function del(id: string) {
     if (!confirm("Delete category?")) return;
@@ -36,17 +41,40 @@ function Categories() {
     <div className="space-y-4 max-w-2xl">
       <h1 className="text-xl font-bold">Categories</h1>
       <div className="flex gap-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New category name" className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-        <button onClick={add} className="flex items-center gap-1 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white"><Plus className="h-3.5 w-3.5" /> Add</button>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="New category name"
+          className="flex-1 rounded-lg border border-border px-3 py-2 text-sm"
+        />
+        <button
+          onClick={add}
+          className="flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white"
+        >
+          <Plus className="h-3.5 w-3.5" /> Add
+        </button>
       </div>
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
         {(cats ?? []).map((c, i) => (
-          <div key={c.id} className="flex items-center justify-between border-b border-slate-100 p-3 last:border-0">
-            <div className="text-sm"><span className="mr-3 inline-block w-6 text-xs font-semibold text-slate-400">{i + 1}</span>{c.name}<span className="ml-2 text-xs text-slate-400">/{c.slug}</span></div>
-            <button onClick={() => del(c.id)} className="text-rose-500"><Trash2 className="h-4 w-4" /></button>
+          <div
+            key={c.id}
+            className="flex items-center justify-between border-b border-border p-3 last:border-0"
+          >
+            <div className="text-sm">
+              <span className="mr-3 inline-block w-6 text-xs font-semibold text-muted-foreground/70">
+                {i + 1}
+              </span>
+              {c.name}
+              <span className="ml-2 text-xs text-muted-foreground/70">/{c.slug}</span>
+            </div>
+            <button onClick={() => del(c.id)} className="text-rose-500">
+              <Trash2 className="h-4 w-4" />
+            </button>
           </div>
         ))}
-        {!cats?.length && <div className="p-6 text-center text-xs text-slate-400">No categories</div>}
+        {!cats?.length && (
+          <div className="p-6 text-center text-xs text-muted-foreground/70">No categories</div>
+        )}
       </div>
     </div>
   );

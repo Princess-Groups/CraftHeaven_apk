@@ -146,6 +146,7 @@ export type Database = {
           id: string
           product_id: string
           quantity: number
+          unit: string
           user_id: string
         }
         Insert: {
@@ -153,6 +154,7 @@ export type Database = {
           id?: string
           product_id: string
           quantity?: number
+          unit?: string
           user_id: string
         }
         Update: {
@@ -160,6 +162,7 @@ export type Database = {
           id?: string
           product_id?: string
           quantity?: number
+          unit?: string
           user_id?: string
         }
         Relationships: [
@@ -198,31 +201,55 @@ export type Database = {
       }
       order_items: {
         Row: {
+          cgst_amount: number
+          cgst_rate: number
           id: string
+          igst_amount: number
+          igst_rate: number
           line_total: number
           order_id: string
           product_id: string
           product_name: string
           quantity: number
+          sgst_amount: number
+          sgst_rate: number
+          unit: string
           unit_price: number
+          variation: string | null
         }
         Insert: {
+          cgst_amount?: number
+          cgst_rate?: number
           id?: string
+          igst_amount?: number
+          igst_rate?: number
           line_total: number
           order_id: string
           product_id: string
           product_name: string
           quantity: number
+          sgst_amount?: number
+          sgst_rate?: number
+          unit?: string
           unit_price: number
+          variation?: string | null
         }
         Update: {
+          cgst_amount?: number
+          cgst_rate?: number
           id?: string
+          igst_amount?: number
+          igst_rate?: number
           line_total?: number
           order_id?: string
           product_id?: string
           product_name?: string
           quantity?: number
+          sgst_amount?: number
+          sgst_rate?: number
+          unit?: string
           unit_price?: number
+          variation?: string | null
         }
         Relationships: [
           {
@@ -277,57 +304,78 @@ export type Database = {
         Row: {
           address_id: string | null
           address_snapshot: Json | null
+          cgst_amount: number
           channel: Database["public"]["Enums"]["order_channel"]
           created_at: string
           created_by: string | null
           delivery_fee: number
           delivery_type: Database["public"]["Enums"]["delivery_type"] | null
           discount: number
+          gst_total: number
           id: string
+          igst_amount: number
           notes: string | null
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_status: Database["public"]["Enums"]["payment_status"]
+          sgst_amount: number
+          shipping_charges: number
           status: Database["public"]["Enums"]["order_status"]
           subtotal: number
+          tax_type: string
           total: number
+          transaction_state: string | null
           updated_at: string
           user_id: string | null
         }
         Insert: {
           address_id?: string | null
           address_snapshot?: Json | null
+          cgst_amount?: number
           channel: Database["public"]["Enums"]["order_channel"]
           created_at?: string
           created_by?: string | null
           delivery_fee?: number
           delivery_type?: Database["public"]["Enums"]["delivery_type"] | null
           discount?: number
+          gst_total?: number
           id?: string
+          igst_amount?: number
           notes?: string | null
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_status?: Database["public"]["Enums"]["payment_status"]
+          sgst_amount?: number
+          shipping_charges?: number
           status?: Database["public"]["Enums"]["order_status"]
           subtotal?: number
+          tax_type?: string
           total?: number
+          transaction_state?: string | null
           updated_at?: string
           user_id?: string | null
         }
         Update: {
           address_id?: string | null
           address_snapshot?: Json | null
+          cgst_amount?: number
           channel?: Database["public"]["Enums"]["order_channel"]
           created_at?: string
           created_by?: string | null
           delivery_fee?: number
           delivery_type?: Database["public"]["Enums"]["delivery_type"] | null
           discount?: number
+          gst_total?: number
           id?: string
+          igst_amount?: number
           notes?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_status?: Database["public"]["Enums"]["payment_status"]
+          sgst_amount?: number
+          shipping_charges?: number
           status?: Database["public"]["Enums"]["order_status"]
           subtotal?: number
+          tax_type?: string
           total?: number
+          transaction_state?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -346,13 +394,16 @@ export type Database = {
           barcode: string | null
           brand_id: string | null
           category_id: string | null
+          cgst_rate: number
           color: string | null
+          color_variations: Json
           created_at: string
           description: string | null
           discount_price: number | null
           gst_rate: number
           hsn_code: string | null
           id: string
+          igst_rate: number
           image_urls: string[]
           is_available: boolean
           is_new: boolean
@@ -363,22 +414,27 @@ export type Database = {
           purchase_price: number | null
           rating: number | null
           reorder_level: number
+          sgst_rate: number
           sku: string | null
           size: string | null
           slug: string
           stock: number
+          unit: string
         }
         Insert: {
           barcode?: string | null
           brand_id?: string | null
           category_id?: string | null
+          cgst_rate?: number
           color?: string | null
+          color_variations?: Json
           created_at?: string
           description?: string | null
           discount_price?: number | null
           gst_rate?: number
           hsn_code?: string | null
           id?: string
+          igst_rate?: number
           image_urls?: string[]
           is_available?: boolean
           is_new?: boolean
@@ -389,22 +445,27 @@ export type Database = {
           purchase_price?: number | null
           rating?: number | null
           reorder_level?: number
+          sgst_rate?: number
           sku?: string | null
           size?: string | null
           slug: string
           stock?: number
+          unit?: string
         }
         Update: {
           barcode?: string | null
           brand_id?: string | null
           category_id?: string | null
+          cgst_rate?: number
           color?: string | null
+          color_variations?: Json
           created_at?: string
           description?: string | null
           discount_price?: number | null
           gst_rate?: number
           hsn_code?: string | null
           id?: string
+          igst_rate?: number
           image_urls?: string[]
           is_available?: boolean
           is_new?: boolean
@@ -415,10 +476,12 @@ export type Database = {
           purchase_price?: number | null
           rating?: number | null
           reorder_level?: number
+          sgst_rate?: number
           sku?: string | null
           size?: string | null
           slug?: string
           stock?: number
+          unit?: string
         }
         Relationships: [
           {
@@ -465,6 +528,7 @@ export type Database = {
           product_id: string
           purchase_id: string
           quantity: number
+          unit: string
           unit_cost: number
         }
         Insert: {
@@ -473,6 +537,7 @@ export type Database = {
           product_id: string
           purchase_id: string
           quantity: number
+          unit?: string
           unit_cost: number
         }
         Update: {
@@ -481,6 +546,7 @@ export type Database = {
           product_id?: string
           purchase_id?: string
           quantity?: number
+          unit?: string
           unit_cost?: number
         }
         Relationships: [
@@ -677,6 +743,45 @@ export type Database = {
           },
         ]
       }
+      whatsapp_settings: {
+        Row: {
+          access_token: string | null
+          api_version: string
+          business_account_id: string | null
+          created_at: string
+          id: number
+          is_active: boolean
+          phone_number_id: string | null
+          updated_at: string
+          webhook_verify_token: string | null
+          webhook_url: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          api_version?: string
+          business_account_id?: string | null
+          created_at?: string
+          id?: number
+          is_active?: boolean
+          phone_number_id?: string | null
+          updated_at?: string
+          webhook_verify_token?: string | null
+          webhook_url?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          api_version?: string
+          business_account_id?: string | null
+          created_at?: string
+          id?: number
+          is_active?: boolean
+          phone_number_id?: string | null
+          updated_at?: string
+          webhook_verify_token?: string | null
+          webhook_url?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -712,14 +817,28 @@ export type Database = {
         Args: {
           _brand_id: string
           _category_id: string
+          _cgst_rate?: number
           _color: string
+          _color_variations?: Json
+          _igst_rate?: number
+          _image_url?: string
           _name: string
           _purchase_price: number
           _selling_price: number
+          _sgst_rate?: number
           _size: string
           _sku: string
+          _unit?: string
         }
         Returns: string
+      }
+      convert_unit: {
+        Args: { _amount: number; _from: string; _to: string }
+        Returns: number
+      }
+      merge_color_variations: {
+        Args: { _current: Json; _incoming: Json }
+        Returns: Json
       }
       mark_order_paid_by_gateway: {
         Args: {
@@ -759,6 +878,9 @@ export type Database = {
           _notes?: string
           _payment_method: Database["public"]["Enums"]["payment_method"]
           _discount?: number
+          _tax_type?: string
+          _shipping?: number
+          _state?: string
         }
         Returns: string
       }

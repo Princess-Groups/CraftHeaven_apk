@@ -19,16 +19,26 @@ function Reports() {
     queryFn: async () => {
       const now = new Date();
       const from =
-        period === "daily" ? new Date(now.getTime() - 30 * 864e5)
-        : period === "monthly" ? new Date(now.getFullYear(), now.getMonth() - 11, 1)
-        : new Date(now.getFullYear() - 4, 0, 1);
-      const { data: orders } = await supabase.from("orders").select("total,channel,created_at,status").gte("created_at", from.toISOString());
-      const { data: purchases } = await supabase.from("purchases").select("total,created_at").gte("created_at", from.toISOString());
+        period === "daily"
+          ? new Date(now.getTime() - 30 * 864e5)
+          : period === "monthly"
+            ? new Date(now.getFullYear(), now.getMonth() - 11, 1)
+            : new Date(now.getFullYear() - 4, 0, 1);
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("total,channel,created_at,status")
+        .gte("created_at", from.toISOString());
+      const { data: purchases } = await supabase
+        .from("purchases")
+        .select("total,created_at")
+        .gte("created_at", from.toISOString());
       const os = orders ?? [];
       return {
         totalSales: os.reduce((s, o) => s + Number(o.total), 0),
         online: os.filter((o) => o.channel === "ONLINE").reduce((s, o) => s + Number(o.total), 0),
-        offline: os.filter((o) => o.channel === "IN_STORE").reduce((s, o) => s + Number(o.total), 0),
+        offline: os
+          .filter((o) => o.channel === "IN_STORE")
+          .reduce((s, o) => s + Number(o.total), 0),
         orderCount: os.length,
         cancelled: os.filter((o) => o.status === "CANCELLED").length,
         purchaseTotal: (purchases ?? []).reduce((s, p) => s + Number(p.total), 0),
@@ -40,20 +50,30 @@ function Reports() {
   const { data: purchaseReport } = useQuery({
     queryKey: ["report-purchases"],
     queryFn: async () =>
-      (await supabase
-        .from("purchases")
-        .select("id,invoice_no,purchase_date,total,supplier_id,suppliers(name),purchase_items(id,quantity,unit_cost,line_total,products(name,sku))")
-        .order("purchase_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(100)).data ?? [],
+      (
+        await supabase
+          .from("purchases")
+          .select(
+            "id,invoice_no,purchase_date,total,supplier_id,suppliers(name),purchase_items(id,quantity,unit_cost,line_total,products(name,sku))",
+          )
+          .order("purchase_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(100)
+      ).data ?? [],
   });
 
   // Sales report — completed (non-cancelled) orders
   const { data: salesReport } = useQuery({
     queryKey: ["report-sales"],
     queryFn: async () => {
-      const { data: orders } = await supabase.from("orders").select("id,channel,status,payment_method,total,created_at,user_id").order("created_at", { ascending: false }).limit(200);
-      const { data: items } = await supabase.from("order_items").select("id,order_id,product_name,quantity,unit_price,line_total");
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("id,channel,status,payment_method,total,created_at,user_id")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      const { data: items } = await supabase
+        .from("order_items")
+        .select("id,order_id,product_name,quantity,unit_price,line_total");
       const byOrder = new Map<string, typeof items>();
       (items ?? []).forEach((it) => {
         const arr = byOrder.get(it.order_id) ?? [];
@@ -81,13 +101,17 @@ function Reports() {
     ];
     const csv = rows.map((r) => r.join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a"); a.href = url; a.download = `report-${period}.csv`; a.click();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `report-${period}.csv`;
+    a.click();
     URL.revokeObjectURL(url);
   }
 
   const purchaseLines = (purchaseReport ?? []).flatMap((p) => {
     const its = (p.purchase_items ?? []).filter(Boolean);
-    if (!its.length) return [{ ...p, productName: "—", sku: "", qty: 0, cost: 0, line: Number(p.total) }];
+    if (!its.length)
+      return [{ ...p, productName: "—", sku: "", qty: 0, cost: 0, line: Number(p.total) }];
     return its.map((it) => ({
       ...p,
       productName: it.products?.name ?? "—",
@@ -102,14 +126,35 @@ function Reports() {
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold flex-1">Reports</h1>
-        <div className="flex rounded-lg border border-slate-200 bg-white p-1">
+        <div className="flex rounded-lg border border-border bg-white p-1">
           {(["daily", "monthly", "yearly"] as const).map((p) => (
-            <button key={p} onClick={() => setPeriod(p)} className={`px-4 py-1.5 text-xs font-semibold rounded ${period === p ? "bg-slate-900 text-white" : "text-slate-600"}`}>{p}</button>
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-4 py-1.5 text-xs font-semibold rounded ${period === p ? "bg-primary text-white" : "text-muted-foreground"}`}
+            >
+              {p}
+            </button>
           ))}
         </div>
-        <button onClick={() => setTab("purchase")} className={`rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold ${tab === "purchase" ? "ring-2 ring-secondary" : ""}`}>Purchase Report</button>
-        <button onClick={() => setTab("sales")} className={`rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold ${tab === "sales" ? "ring-2 ring-secondary" : ""}`}>Sales Report</button>
-        <button onClick={exportCsv} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold">Export CSV</button>
+        <button
+          onClick={() => setTab("purchase")}
+          className={`rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold ${tab === "purchase" ? "ring-2 ring-secondary" : ""}`}
+        >
+          Purchase Report
+        </button>
+        <button
+          onClick={() => setTab("sales")}
+          className={`rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold ${tab === "sales" ? "ring-2 ring-secondary" : ""}`}
+        >
+          Sales Report
+        </button>
+        <button
+          onClick={exportCsv}
+          className="rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold"
+        >
+          Export CSV
+        </button>
       </div>
 
       {tab === "summary" && (
@@ -123,20 +168,32 @@ function Reports() {
             ["Orders", data?.orderCount ?? 0],
             ["Cancelled", data?.cancelled ?? 0],
           ].map(([label, val]) => (
-            <div key={label as string} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="text-[11px] uppercase text-slate-500">{label as string}</div>
-              <div className="mt-1 text-xl font-bold">{typeof val === "number" && label !== "Orders" && label !== "Cancelled" ? `₹${Number(val).toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : val ?? 0}</div>
+            <div
+              key={label as string}
+              className="rounded-xl border border-border bg-white p-4 shadow-sm"
+            >
+              <div className="text-[11px] uppercase text-muted-foreground">{label as string}</div>
+              <div className="mt-1 text-xl font-bold">
+                {typeof val === "number" && label !== "Orders" && label !== "Cancelled"
+                  ? `₹${Number(val).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
+                  : (val ?? 0)}
+              </div>
             </div>
           ))}
         </div>
       )}
 
       {tab === "purchase" && (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-4 py-3"><div className="text-sm font-bold text-slate-900">Purchase Report</div><div className="text-[11px] text-slate-500">Every purchase line with the product name, supplier and totals.</div></div>
+        <div className="rounded-xl border border-border bg-white shadow-sm">
+          <div className="border-b border-border px-4 py-3">
+            <div className="text-sm font-bold text-foreground">Purchase Report</div>
+            <div className="text-[11px] text-muted-foreground">
+              Every purchase line with the product name, supplier and totals.
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
+              <thead className="bg-muted text-[11px] uppercase text-muted-foreground">
                 <tr>
                   <th className="p-3 text-left">S.No.</th>
                   <th className="p-3 text-left">Purchase Date</th>
@@ -151,11 +208,13 @@ function Reports() {
               </thead>
               <tbody>
                 {purchaseLines.map((r, i) => (
-                  <tr key={`${r.id}-${i}`} className="border-t border-slate-100">
-                    <td className="p-3 text-xs font-semibold text-slate-500">{i + 1}</td>
-                    <td className="p-3 text-xs text-slate-600">{new Date(r.purchase_date).toLocaleDateString()}</td>
-                    <td className="p-3 font-semibold text-slate-800">{r.productName}</td>
-                    <td className="p-3 text-xs text-slate-500">{r.sku || "—"}</td>
+                  <tr key={`${r.id}-${i}`} className="border-t border-border">
+                    <td className="p-3 text-xs font-semibold text-muted-foreground">{i + 1}</td>
+                    <td className="p-3 text-xs text-muted-foreground">
+                      {new Date(r.purchase_date).toLocaleDateString()}
+                    </td>
+                    <td className="p-3 font-semibold text-foreground">{r.productName}</td>
+                    <td className="p-3 text-xs text-muted-foreground">{r.sku || "—"}</td>
                     <td className="p-3 text-right">{r.qty}</td>
                     <td className="p-3 text-xs">{r.suppliers?.name ?? "—"}</td>
                     <td className="p-3 text-right">₹{Number(r.cost).toFixed(2)}</td>
@@ -163,7 +222,13 @@ function Reports() {
                     <td className="p-3 text-xs">{r.invoice_no ?? "—"}</td>
                   </tr>
                 ))}
-                {!purchaseLines.length && <tr><td colSpan={9} className="p-8 text-center text-xs text-slate-400">No purchases recorded yet</td></tr>}
+                {!purchaseLines.length && (
+                  <tr>
+                    <td colSpan={9} className="p-8 text-center text-xs text-muted-foreground/70">
+                      No purchases recorded yet
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -171,31 +236,62 @@ function Reports() {
       )}
 
       {tab === "sales" && (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-4 py-3"><div className="text-sm font-bold text-slate-900">Sales Report</div><div className="text-[11px] text-slate-500">Completed / non-cancelled orders (cancelled orders are excluded).</div></div>
+        <div className="rounded-xl border border-border bg-white shadow-sm">
+          <div className="border-b border-border px-4 py-3">
+            <div className="text-sm font-bold text-foreground">Sales Report</div>
+            <div className="text-[11px] text-muted-foreground">
+              Completed / non-cancelled orders (cancelled orders are excluded).
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
-                <tr><th className="p-3 text-left">S.No.</th><th className="p-3 text-left">Order</th><th className="p-3 text-left">Product Name</th><th className="p-3 text-right">Quantity</th><th className="p-3 text-right">Selling Price</th><th className="p-3 text-right">Total</th><th className="p-3 text-left">Payment</th><th className="p-3 text-left">Date</th></tr>
+              <thead className="bg-muted text-[11px] uppercase text-muted-foreground">
+                <tr>
+                  <th className="p-3 text-left">S.No.</th>
+                  <th className="p-3 text-left">Order</th>
+                  <th className="p-3 text-left">Product Name</th>
+                  <th className="p-3 text-right">Quantity</th>
+                  <th className="p-3 text-right">Selling Price</th>
+                  <th className="p-3 text-right">Total</th>
+                  <th className="p-3 text-left">Payment</th>
+                  <th className="p-3 text-left">Date</th>
+                </tr>
               </thead>
               <tbody>
-                {(salesReport ?? []).flatMap((o) => {
-                  const its = o.items ?? [];
-                  if (!its.length) return [{ ...o, name: "—", qty: 0, price: 0, line: Number(o.total) }];
-                  return its.map((it) => ({ ...o, name: it.product_name, qty: it.quantity, price: Number(it.unit_price), line: Number(it.line_total) }));
-                }).map((r, i) => (
-                  <tr key={`${r.id}-${i}`} className="border-t border-slate-100">
-                    <td className="p-3 text-xs font-semibold text-slate-500">{i + 1}</td>
-                    <td className="p-3 font-mono text-xs">#{r.id.slice(0, 8).toUpperCase()}</td>
-                    <td className="p-3 font-semibold text-slate-800">{r.name}</td>
-                    <td className="p-3 text-right">{r.qty}</td>
-                    <td className="p-3 text-right">₹{Number(r.price).toFixed(2)}</td>
-                    <td className="p-3 text-right font-semibold">₹{Number(r.line).toFixed(2)}</td>
-                    <td className="p-3 text-xs">{r.payment_method}</td>
-                    <td className="p-3 text-xs text-slate-600">{new Date(r.created_at).toLocaleDateString()}</td>
+                {(salesReport ?? [])
+                  .flatMap((o) => {
+                    const its = o.items ?? [];
+                    if (!its.length)
+                      return [{ ...o, name: "—", qty: 0, price: 0, line: Number(o.total) }];
+                    return its.map((it) => ({
+                      ...o,
+                      name: it.product_name,
+                      qty: it.quantity,
+                      price: Number(it.unit_price),
+                      line: Number(it.line_total),
+                    }));
+                  })
+                  .map((r, i) => (
+                    <tr key={`${r.id}-${i}`} className="border-t border-border">
+                      <td className="p-3 text-xs font-semibold text-muted-foreground">{i + 1}</td>
+                      <td className="p-3 font-mono text-xs">#{r.id.slice(0, 8).toUpperCase()}</td>
+                      <td className="p-3 font-semibold text-foreground">{r.name}</td>
+                      <td className="p-3 text-right">{r.qty}</td>
+                      <td className="p-3 text-right">₹{Number(r.price).toFixed(2)}</td>
+                      <td className="p-3 text-right font-semibold">₹{Number(r.line).toFixed(2)}</td>
+                      <td className="p-3 text-xs">{r.payment_method}</td>
+                      <td className="p-3 text-xs text-muted-foreground">
+                        {new Date(r.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                {(salesReport ?? []).length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-xs text-muted-foreground/70">
+                      No sales recorded yet
+                    </td>
                   </tr>
-                ))}
-                {(salesReport ?? []).length === 0 && <tr><td colSpan={8} className="p-8 text-center text-xs text-slate-400">No sales recorded yet</td></tr>}
+                )}
               </tbody>
             </table>
           </div>

@@ -13,6 +13,7 @@ type Product = {
   discount_price: number | null;
   image_urls: string[];
   stock: number;
+  unit?: string;
   is_available: boolean;
   low_stock_threshold: number;
   rating?: number | null;
@@ -34,7 +35,11 @@ export function ProductCard({ product }: { product: Product }) {
     queryKey: ["wishlist-has", product.id, session?.user.id],
     queryFn: async () => {
       if (!session) return false;
-      const { count } = await supabase.from("wishlists").select("*", { count: "exact", head: true }).eq("user_id", session.user.id).eq("product_id", product.id);
+      const { count } = await supabase
+        .from("wishlists")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", session.user.id)
+        .eq("product_id", product.id);
       return (count ?? 0) > 0;
     },
     enabled: !!session,
@@ -44,9 +49,15 @@ export function ProductCard({ product }: { product: Product }) {
     mutationFn: async () => {
       if (!session) throw new Error("Sign in to save favourites");
       if (isWished) {
-        await supabase.from("wishlists").delete().eq("user_id", session.user.id).eq("product_id", product.id);
+        await supabase
+          .from("wishlists")
+          .delete()
+          .eq("user_id", session.user.id)
+          .eq("product_id", product.id);
       } else {
-        await supabase.from("wishlists").insert({ user_id: session.user.id, product_id: product.id });
+        await supabase
+          .from("wishlists")
+          .insert({ user_id: session.user.id, product_id: product.id });
       }
     },
     onSuccess: () => {
@@ -60,7 +71,12 @@ export function ProductCard({ product }: { product: Product }) {
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-card transition hover:shadow-soft">
       <Link to="/product/$slug" params={{ slug: product.slug }} className="relative block">
         <div className="aspect-square overflow-hidden bg-primary-soft">
-          <img src={product.image_urls[0]} alt={product.name} className="h-full w-full object-cover transition group-hover:scale-105" loading="lazy" />
+          <img
+            src={product.image_urls[0]}
+            alt={product.name}
+            className="h-full w-full object-cover transition group-hover:scale-105"
+            loading="lazy"
+          />
         </div>
         {hasDiscount ? (
           <span className="absolute left-2 top-2 rounded-full bg-warning px-2 py-0.5 text-[10px] font-semibold text-warning-foreground">
@@ -68,25 +84,45 @@ export function ProductCard({ product }: { product: Product }) {
           </span>
         ) : null}
         {outOfStock ? (
-          <span className="absolute left-2 top-2 rounded-full bg-destructive px-2 py-0.5 text-[10px] font-semibold text-destructive-foreground">Out of stock</span>
+          <span className="absolute left-2 top-2 rounded-full bg-destructive px-2 py-0.5 text-[10px] font-semibold text-destructive-foreground">
+            Out of stock
+          </span>
         ) : lowStock ? (
-          <span className="absolute left-2 top-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-secondary-foreground">Only {product.stock} left</span>
+          <span className="absolute left-2 top-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-secondary-foreground">
+            Only {Number(product.stock)} {product.unit ?? ""} left
+          </span>
         ) : null}
       </Link>
       <button
         aria-label="Wishlist"
-        onClick={(e) => { e.preventDefault(); toggleWish.mutate(); }}
+        onClick={(e) => {
+          e.preventDefault();
+          toggleWish.mutate();
+        }}
         className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-background/90 shadow-card backdrop-blur transition hover:scale-105"
       >
-        <Heart className={cn("h-4 w-4", isWished ? "fill-destructive text-destructive" : "text-muted-foreground")} />
+        <Heart
+          className={cn(
+            "h-4 w-4",
+            isWished ? "fill-destructive text-destructive" : "text-muted-foreground",
+          )}
+        />
       </button>
       <div className="flex flex-1 flex-col gap-1 p-3">
-        <Link to="/product/$slug" params={{ slug: product.slug }} className="line-clamp-2 text-sm font-medium">
+        <Link
+          to="/product/$slug"
+          params={{ slug: product.slug }}
+          className="line-clamp-2 text-sm font-medium"
+        >
           {product.name}
         </Link>
         <div className="mt-auto flex items-baseline gap-2">
           <span className="font-display text-base font-semibold">₹{Number(price).toFixed(0)}</span>
-          {hasDiscount ? <span className="text-xs text-muted-foreground line-through">₹{Number(product.price).toFixed(0)}</span> : null}
+          {hasDiscount ? (
+            <span className="text-xs text-muted-foreground line-through">
+              ₹{Number(product.price).toFixed(0)}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>
