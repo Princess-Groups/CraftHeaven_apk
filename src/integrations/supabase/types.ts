@@ -782,12 +782,126 @@ export type Database = {
         }
         Relationships: []
       }
+      order_profit_calculations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_delivery: number
+          gst_amount: number
+          id: string
+          loan_amount: number
+          loan_cost: number
+          loan_percent: number
+          net_profit: number
+          order_id: string
+          profit_percent: number
+          purchase_amount: number
+          purchase_shipping: number
+          revenue: number
+          total_cost: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_delivery?: number
+          gst_amount?: number
+          id?: string
+          loan_amount?: number
+          loan_cost?: number
+          loan_percent?: number
+          net_profit?: number
+          order_id: string
+          profit_percent?: number
+          purchase_amount?: number
+          purchase_shipping?: number
+          revenue?: number
+          total_cost?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_delivery?: number
+          gst_amount?: number
+          id?: string
+          loan_amount?: number
+          loan_cost?: number
+          loan_percent?: number
+          net_profit?: number
+          order_id?: string
+          profit_percent?: number
+          purchase_amount?: number
+          purchase_shipping?: number
+          revenue?: number
+          total_cost?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_profit_calculations_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profit_settings: {
+        Row: {
+          business_loan_amount: number
+          created_at: string
+          id: number
+          loan_percent_default: number
+          updated_at: string
+        }
+        Insert: {
+          business_loan_amount?: number
+          created_at?: string
+          id?: number
+          loan_percent_default?: number
+          updated_at?: string
+        }
+        Update: {
+          business_loan_amount?: number
+          created_at?: string
+          id?: number
+          loan_percent_default?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
       bootstrap_admin: { Args: never; Returns: boolean }
+      get_profit_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      save_profit_settings: {
+        Args: {
+          _business_loan_amount: number
+          _loan_percent_default?: number
+        }
+        Returns: boolean
+      }
+      upsert_order_profit_calculation: {
+        Args: {
+          _gst_amount?: number
+          _loan_amount?: number
+          _loan_percent?: number
+          _order_id: string
+          _purchase_amount: number
+          _purchase_shipping?: number
+        }
+        Returns: Json
+      }
       create_purchase_with_products: {
         Args: {
           _invoice_no?: string

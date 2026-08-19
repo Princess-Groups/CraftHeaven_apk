@@ -31,6 +31,7 @@ import { Route as AdminLoginRouteImport } from './routes/admin/login'
 import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
 import { Route as AdminPosRouteImport } from './routes/admin/pos'
 import { Route as AdminProductsRouteImport } from './routes/admin/products'
+import { Route as AdminProfitRouteImport } from './routes/admin/profit'
 import { Route as AdminPurchasesRouteImport } from './routes/admin/purchases'
 import { Route as AdminReportsRouteImport } from './routes/admin/reports'
 import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
@@ -149,6 +150,11 @@ const AdminProductsRoute = AdminProductsRouteImport.update({
   path: '/products',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminProfitRoute = AdminProfitRouteImport.update({
+  id: '/profit',
+  path: '/profit',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminPurchasesRoute = AdminPurchasesRouteImport.update({
   id: '/purchases',
   path: '/purchases',
@@ -211,6 +217,7 @@ export interface FileRoutesByFullPath {
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/pos': typeof AdminPosRoute
   '/admin/products': typeof AdminProductsRoute
+  '/admin/profit': typeof AdminProfitRoute
   '/admin/purchases': typeof AdminPurchasesRoute
   '/admin/reports': typeof AdminReportsRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -241,6 +248,7 @@ export interface FileRoutesByTo {
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/pos': typeof AdminPosRoute
   '/admin/products': typeof AdminProductsRoute
+  '/admin/profit': typeof AdminProfitRoute
   '/admin/purchases': typeof AdminPurchasesRoute
   '/admin/reports': typeof AdminReportsRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -274,6 +282,7 @@ export interface FileRoutesById {
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/pos': typeof AdminPosRoute
   '/admin/products': typeof AdminProductsRoute
+  '/admin/profit': typeof AdminProfitRoute
   '/admin/purchases': typeof AdminPurchasesRoute
   '/admin/reports': typeof AdminReportsRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -307,6 +316,7 @@ export interface FileRouteTypes {
     | '/admin/orders'
     | '/admin/pos'
     | '/admin/products'
+    | '/admin/profit'
     | '/admin/purchases'
     | '/admin/reports'
     | '/admin/settings'
@@ -337,6 +347,7 @@ export interface FileRouteTypes {
     | '/admin/orders'
     | '/admin/pos'
     | '/admin/products'
+    | '/admin/profit'
     | '/admin/purchases'
     | '/admin/reports'
     | '/admin/settings'
@@ -369,6 +380,7 @@ export interface FileRouteTypes {
     | '/admin/orders'
     | '/admin/pos'
     | '/admin/products'
+    | '/admin/profit'
     | '/admin/purchases'
     | '/admin/reports'
     | '/admin/settings'
@@ -547,6 +559,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminProductsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/profit': {
+      id: '/admin/profit'
+      path: '/profit'
+      fullPath: '/admin/profit'
+      preLoaderRoute: typeof AdminProfitRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/purchases': {
       id: '/admin/purchases'
       path: '/purchases'
@@ -648,6 +667,7 @@ interface AdminRouteRouteChildren {
   AdminOrdersRoute: typeof AdminOrdersRoute
   AdminPosRoute: typeof AdminPosRoute
   AdminProductsRoute: typeof AdminProductsRoute
+  AdminProfitRoute: typeof AdminProfitRoute
   AdminPurchasesRoute: typeof AdminPurchasesRoute
   AdminReportsRoute: typeof AdminReportsRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
@@ -666,6 +686,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminOrdersRoute: AdminOrdersRoute,
   AdminPosRoute: AdminPosRoute,
   AdminProductsRoute: AdminProductsRoute,
+  AdminProfitRoute: AdminProfitRoute,
   AdminPurchasesRoute: AdminPurchasesRoute,
   AdminReportsRoute: AdminReportsRoute,
   AdminSettingsRoute: AdminSettingsRoute,

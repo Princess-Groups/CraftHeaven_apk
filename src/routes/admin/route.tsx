@@ -25,6 +25,7 @@ import {
   LineChart,
   UserCog,
   Settings,
+  Percent,
   Bell,
   LogOut,
   Menu,
@@ -63,6 +64,7 @@ const NAV: { to: string; label: string; icon: React.ElementType; exact?: boolean
   { to: "/admin/inventory", label: "Inventory", icon: Warehouse },
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
   { to: "/admin/analytics", label: "Analytics", icon: LineChart },
+  { to: "/admin/profit", label: "Profit Percentage", icon: Percent },
   { to: "/admin/users", label: "Users & Staff", icon: UserCog },
   { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
