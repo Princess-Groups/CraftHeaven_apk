@@ -48,6 +48,7 @@ function isH3SwallowedErrorBody(body: string): boolean {
 // can't serve this — the gateway has no Supabase session and can't satisfy the
 // CSRF middleware. Intercept the request here, before TanStack routing.
 const PAYMENT_CALLBACK_PATH = "/api/payment/callback";
+const CASHFREE_WEBHOOK_PATH = "/api/payment/cashfree-webhook";
 
 async function handlePaymentCallback(request: Request): Promise<Response> {
   try {
@@ -64,7 +65,28 @@ async function handlePaymentCallback(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     console.error("[payment] webhook error", error);
-    return Response.json({ ok: false, error: error instanceof Error ? error.message : "error" }, { status: 400 });
+    return Response.json(
+      { ok: false, error: error instanceof Error ? error.message : "error" },
+      { status: 400 },
+    );
+  }
+}
+
+async function handleCashfreeCallback(request: Request): Promise<Response> {
+  try {
+    // Cashfree only sends JSON webhooks. Read the raw text so the HMAC covers
+    // the exact bytes the gateway signed (re-parsing can change the payload).
+    const raw = await request.text();
+    const body = (JSON.parse(raw || "{}") as Record<string, unknown>) ?? {};
+    const { processCashfreeWebhook } = await import("./lib/payment.functions");
+    const result = await processCashfreeWebhook(body, raw, request.headers);
+    return Response.json(result);
+  } catch (error) {
+    console.error("[cashfree] webhook error", error);
+    return Response.json(
+      { ok: false, error: error instanceof Error ? error.message : "error" },
+      { status: 400 },
+    );
   }
 }
 
@@ -72,8 +94,12 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       // Payment gateway webhook — handled before TanStack routing (see above).
-      if (new URL(request.url).pathname === PAYMENT_CALLBACK_PATH) {
+      const pathname = new URL(request.url).pathname;
+      if (pathname === PAYMENT_CALLBACK_PATH) {
         return await handlePaymentCallback(request);
+      }
+      if (pathname === CASHFREE_WEBHOOK_PATH) {
+        return await handleCashfreeCallback(request);
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

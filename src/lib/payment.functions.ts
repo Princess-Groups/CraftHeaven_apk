@@ -9,12 +9,18 @@
 //     the order PAID via the RPC. Exposed at the stable URL /api/payment/callback
 //     by an intercept in src/server.ts (a createServerFn can't serve a bank
 //     webhook — it would be blocked by the CSRF middleware).
+//   - initiateCashfreePayment: Cashfree version of the same flow — creates a
+//     Cashfree order (POST /orders) and returns a payment_session_id the
+//     checkout page hands to the Cashfree JS SDK to open the hosted checkout.
+//   - processCashfreeWebhook: verifies the Cashfree webhook HMAC, then marks the
+//     order PAID via the same generic RPC. Served at /api/payment/cashfree-webhook.
 //
-// Both use the service-role Supabase client and keep INDUSIND_* env vars
-// server-side — they never reach the browser bundle.
+// Both gateways use the service-role Supabase client. INDUSIND_* / CASHFREE_*
+// env vars live server-side — they never reach the browser bundle.
 
 import { createServerFn } from "@tanstack/react-start";
 import { buildCreateRequest, verifyCallbackSignature, INDUSIND } from "@/lib/indusind";
+import { CASHFREE, cashfreeHeaders, verifyWebhookSignature } from "@/lib/cashfree";
 
 export type InitiatePaymentInput = {
   orderId: string;
@@ -95,9 +101,11 @@ export const initiateGatewayPayment = createServerFn({ method: "POST" })
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...payload, hash }),
     });
-    const createJson = (await createRes.json().catch(() => null)) as
-      | { redirect_url?: string; redirectUrl?: string; data?: { redirect_url?: string } }
-      | null;
+    const createJson = (await createRes.json().catch(() => null)) as {
+      redirect_url?: string;
+      redirectUrl?: string;
+      data?: { redirect_url?: string };
+    } | null;
 
     const redirectUrl =
       createJson?.redirect_url ?? createJson?.redirectUrl ?? createJson?.data?.redirect_url;
@@ -109,9 +117,9 @@ export const initiateGatewayPayment = createServerFn({ method: "POST" })
   });
 
 export type GatewayCallbackInput = {
-  orderId?: string;      // your internal order id (uuid)
-  txnId?: string;        // gateway transaction id
-  status?: string;       // e.g. SUCCESS / FAILED / PENDING
+  orderId?: string; // your internal order id (uuid)
+  txnId?: string; // gateway transaction id
+  status?: string; // e.g. SUCCESS / FAILED / PENDING
   hash?: string;
   [key: string]: unknown;
 };
@@ -122,19 +130,23 @@ export type GatewayCallbackInput = {
  * can't serve the webhook because the CSRF middleware + Supabase auth-attacher
  * expect a browser session the gateway doesn't have.
  */
-export async function processGatewayCallback(body: Record<string, unknown>): Promise<{ ok: boolean }> {
+export async function processGatewayCallback(
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean }> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   const data = body as GatewayCallbackInput;
 
-  if (data.secret && INDUSIND.callbackSecret() && String(data.secret) !== INDUSIND.callbackSecret()) {
+  if (
+    data.secret &&
+    INDUSIND.callbackSecret() &&
+    String(data.secret) !== INDUSIND.callbackSecret()
+  ) {
     throw new Error("Unauthorized callback");
   }
 
   // Signature verification is the real auth — reject anything that doesn't verify.
-  const params = Object.fromEntries(
-    Object.entries(data).map(([k, v]) => [k, String(v ?? "")]),
-  );
+  const params = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v ?? "")]));
   const ok = await verifyCallbackSignature(params);
   if (!ok) {
     console.error("[payment] callback signature mismatch", { orderId: data.orderId });
@@ -150,15 +162,278 @@ export async function processGatewayCallback(body: Record<string, unknown>): Pro
       _gateway: "indusind",
       _gateway_order_id: String(data.order_id ?? ""),
       _txn_id: String(data.txnId ?? ""),
-      _response: { status: String(data.status ?? ""), txnId: String(data.txnId ?? ""), receivedAt: new Date().toISOString() },
+      _response: {
+        status: String(data.status ?? ""),
+        txnId: String(data.txnId ?? ""),
+        receivedAt: new Date().toISOString(),
+      },
     });
     if (error) throw error;
   } else {
-    const { error } = await supabaseAdmin.from("payments").update({
-      status: String(data.status ?? "FAILED").toUpperCase(),
-      response: { status: String(data.status ?? ""), receivedAt: new Date().toISOString() },
-    }).eq("gateway_order_id", String(data.order_id ?? "")).or(`order_id.eq.${orderId}`);
+    const { error } = await supabaseAdmin
+      .from("payments")
+      .update({
+        status: String(data.status ?? "FAILED").toUpperCase(),
+        response: { status: String(data.status ?? ""), receivedAt: new Date().toISOString() },
+      })
+      .eq("gateway_order_id", String(data.order_id ?? ""))
+      .or(`order_id.eq.${orderId}`);
     if (error) console.error("[payment] failed to record non-success callback", error);
+  }
+
+  return { ok: true };
+}
+
+// ============================================================================
+// Cashfree Payment Gateway
+// ============================================================================
+
+export type InitiateCashfreeInput = {
+  orderId: string;
+  amount: number;
+};
+
+/** Sandbox vs production mode, exposed so the client can load the right SDK. */
+export const getCashfreeMode = createServerFn({ method: "GET" }).handler(async () => {
+  return { mode: CASHFREE.apiBase().includes("sandbox") ? "sandbox" : "production" };
+});
+
+export type CashfreeOrderResult = {
+  paymentSessionId: string;
+  orderStatus: string;
+  orderId: string; // the id Cashfree generated for the order
+};
+
+/** Build the unique, gateway-safe order id we tell Cashfree. */
+function cashfreeOrderId(orderId: string): string {
+  // Cashfree order_id must be alphanumeric (a-z / 0-9, hyphens allowed) and
+  // unique per merchant. Derive it deterministically from our UUID so the
+  // webhook can always map back to the internal order.
+  return `ACH${orderId.replace(/-/g, "").toUpperCase().slice(0, 30)}`;
+}
+
+/**
+ * Create a Cashfree order and return the payment_session_id the browser SDK
+ * needs to open the hosted checkout. Persists a payments row first (like the
+ * IndusInd flow) so the webhook has something to update.
+ */
+export const initiateCashfreePayment = createServerFn({ method: "POST" })
+  .validator((d: InitiateCashfreeInput) => d)
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const orderId = String(data.orderId ?? "").trim();
+    const amount = Number(data.amount);
+
+    if (!orderId || !Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Invalid payment request");
+    }
+
+    if (!CASHFREE.clientId() || !CASHFREE.clientSecret()) {
+      throw new Error("Cashfree isn't configured yet — pay via UPI instead");
+    }
+
+    // Fetch the order + verify it's in a payable state. Money comes from the DB.
+    const { data: order, error: orderErr } = await supabaseAdmin
+      .from("orders")
+      .select("id, user_id, payment_status, total, channel")
+      .eq("id", orderId)
+      .single();
+    if (orderErr || !order) throw new Error("Order not found");
+    if (order.payment_status === "PAID") throw new Error("This order is already paid");
+    const dbAmount = Number(order.total);
+    if (!Number.isFinite(dbAmount) || dbAmount <= 0) {
+      throw new Error("Order has no payable amount");
+    }
+
+    // Customer details (Cashfree requires at least customer_id + phone/email).
+    let customer: { full_name: string | null; phone: string | null } | null = null;
+    if (order.user_id) {
+      const { data: profile } = await supabaseAdmin
+        .from("profiles")
+        .select("full_name, phone")
+        .eq("id", order.user_id)
+        .maybeSingle();
+      customer = (profile ?? null) as { full_name: string | null; phone: string | null } | null;
+    }
+    const customerId = String(order.user_id ?? orderId)
+      .replace(/[^a-zA-Z0-9-_]/g, "")
+      .slice(0, 50);
+
+    const cfOrderId = cashfreeOrderId(orderId);
+
+    const { data: created, error: createErr } = await supabaseAdmin.from("payments").insert({
+      order_id: orderId,
+      user_id: order.user_id,
+      gateway: "cashfree",
+      gateway_order_id: cfOrderId,
+      amount: dbAmount,
+      status: "INITIATED",
+      response: {
+        clientId: CASHFREE.clientId() ? "configured" : "",
+        amount: dbAmount,
+        currency: "INR",
+      },
+    });
+    if (createErr) throw new Error("Could not start payment");
+
+    // Create the Cashfree order.
+    const res = await fetch(`${CASHFREE.apiBase()}/orders`, {
+      method: "POST",
+      headers: cashfreeHeaders(),
+      body: JSON.stringify({
+        order_id: cfOrderId,
+        order_amount: dbAmount,
+        order_currency: "INR",
+        order_note: `Order ${orderId.slice(0, 8).toUpperCase()}`,
+        customer_details: {
+          customer_id: customerId,
+          customer_name: customer?.full_name?.slice(0, 100) ?? "",
+          customer_phone: customer?.phone?.slice(0, 12) ?? "",
+          customer_email: "",
+        },
+      }),
+    });
+    const json = (await res.json().catch(() => null)) as {
+      payment_session_id?: string;
+      order_status?: string;
+      order_id?: string;
+    } | null;
+    if (!res.ok || !json) {
+      console.error("[cashfree] create order failed", res.status, json);
+      // Leave the payments row in INITIATED so the UI can fall back to UPI.
+      throw new Error(`Cashfree could not start the payment (${res.status}) — pay via UPI instead`);
+    }
+
+    const paymentSessionId = json.payment_session_id as string | undefined;
+    if (!paymentSessionId) {
+      throw new Error("Cashfree returned no payment session — pay via UPI instead");
+    }
+
+    return {
+      paymentSessionId,
+      orderStatus: String(json.order_status ?? ""),
+      orderId: String(json.order_id ?? cfOrderId),
+    } as CashfreeOrderResult;
+  });
+
+/**
+ * Cashfree webhook handler. Cashfree POSTs events (including "payment.orders"
+ * with status transitions) to /api/payment/cashfree-webhook. We verify the HMAC
+ * signature, then mark the order PAID via the same generic RPC the IndusInd
+ * callback uses.
+ */
+export async function processCashfreeWebhook(
+  bodyRecord: Record<string, unknown>,
+  rawBody: string,
+  headers: Headers,
+): Promise<{ ok: boolean }> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+  const record: Record<string, unknown> = bodyRecord;
+  const signature = String(
+    headers.get("x-webhook-signature") ??
+      record["x-webhook-signature"] ??
+      (record.header instanceof Object
+        ? (record.header as Record<string, unknown>)["x-webhook-signature"]
+        : "") ??
+      "",
+  );
+  const timestamp = String(
+    headers.get("x-webhook-timestamp") ??
+      record["x-webhook-timestamp"] ??
+      (record.header instanceof Object
+        ? (record.header as Record<string, unknown>)["x-webhook-timestamp"]
+        : "") ??
+      "",
+  );
+  // Cashfree signs the raw JSON body — always pass the exact bytes received.
+  const payload = rawBody || JSON.stringify(bodyRecord);
+
+  // Signature verification is the real auth gate.
+  const secret = CASHFREE.webhookSecret();
+  if (secret) {
+    const ok = await verifyWebhookSignature(signature, timestamp, String(payload));
+    if (!ok) {
+      console.error("[cashfree] webhook signature mismatch");
+      throw new Error("Bad signature");
+    }
+  } else {
+    console.warn("[cashfree] webhook secret not configured — accepting unverified event");
+  }
+
+  // Determine the order + status from the event-shaped payload. Cashfree wraps
+  // the order data under `data`; be tolerant and read from both levels.
+  const raw = bodyRecord as Record<string, unknown>;
+  const inner =
+    raw.data instanceof Object && !Array.isArray(raw.data)
+      ? (raw.data as Record<string, unknown>)
+      : raw;
+  const payment =
+    inner.payment instanceof Object
+      ? (inner.payment as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+
+  const orderStatus = String(
+    inner.order_status ?? inner.status ?? raw.order_status ?? "",
+  ).toUpperCase();
+  const cashfreeOrderId = String(inner.order_id ?? raw.order_id ?? "");
+  const txnId = String(
+    payment.cf_payment_id ?? inner.cf_payment_id ?? inner.payment_id ?? raw.payment_id ?? "",
+  );
+  const orderAmount = Number(inner.order_amount ?? raw.order_amount ?? 0);
+
+  // Only a PAID/SUCCESS transition should mark the order paid.
+  if (orderStatus === "PAID" || orderStatus === "SUCCESS" || orderStatus === "COMPLETE") {
+    if (!cashfreeOrderId) {
+      console.error("[cashfree] webhook missing order_id");
+      throw new Error("Missing order id");
+    }
+
+    // Map back to our internal order via the payments row we inserted up front.
+    const { data: payRow } = await supabaseAdmin
+      .from("payments")
+      .select("order_id, user_id")
+      .eq("gateway_order_id", cashfreeOrderId)
+      .maybeSingle();
+    if (!payRow) {
+      console.error("[cashfree] webhook for unknown order", cashfreeOrderId);
+      throw new Error("Unknown order");
+    }
+
+    const { error } = await supabaseAdmin.rpc("mark_order_paid_by_gateway", {
+      _order_id: payRow.order_id,
+      _gateway: "cashfree",
+      _gateway_order_id: cashfreeOrderId,
+      _txn_id: txnId,
+      _response: {
+        orderStatus,
+        orderAmount,
+        orderId: cashfreeOrderId,
+        txnId,
+        eventType: String(raw.type ?? ""),
+        receivedAt: new Date().toISOString(),
+      },
+    });
+    if (error) {
+      console.error("[cashfree] failed to mark order paid", error);
+      throw error;
+    }
+  } else {
+    // Non-success transition — record it on the payments row but don't mark PAID.
+    const { error } = await supabaseAdmin
+      .from("payments")
+      .update({
+        status: orderStatus || "FAILED",
+        txn_id: txnId,
+        response: {
+          orderStatus,
+          orderAmount,
+          orderId: cashfreeOrderId,
+          receivedAt: new Date().toISOString(),
+        },
+      })
+      .eq("gateway_order_id", cashfreeOrderId);
+    if (error) console.error("[cashfree] failed to record non-success webhook", error);
   }
 
   return { ok: true };

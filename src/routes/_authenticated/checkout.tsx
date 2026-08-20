@@ -10,7 +10,11 @@ import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { BadgePercent, Banknote, CheckCircle2, Loader2 } from "lucide-react";
 import { UPIS_APPS, orderRef, launchUpiApp, type UpiParams } from "@/lib/upi";
-import { initiateGatewayPayment } from "@/lib/payment.functions";
+import {
+  initiateGatewayPayment,
+  initiateCashfreePayment,
+  getCashfreeMode,
+} from "@/lib/payment.functions";
 import { notifyOrderWhatsApp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +39,45 @@ const COUPONS: Record<string, { pct: number }> = {
   BLOOM20: { pct: 20 },
   CRAFT10: { pct: 10 },
 };
+
+// Loads the Cashfree JS SDK once and runs the hosted checkout.
+// `mode` must match the environment we created the order in (sandbox/production).
+let cashfreeSdkPromise: Promise<void> | null = null;
+function loadCashfreeSdk(mode: "sandbox" | "production"): Promise<void> {
+  if (!cashfreeSdkPromise) {
+    cashfreeSdkPromise = new Promise((resolve, reject) => {
+      if (typeof window === "undefined") return resolve();
+      if ((window as any).Cashfree) return resolve();
+      const s = document.createElement("script");
+      s.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("Could not load the payment page"));
+      document.head.appendChild(s);
+    });
+  }
+  return cashfreeSdkPromise;
+}
+
+async function runCashfreeCheckout(orderId: string, paymentSessionId: string) {
+  const mode = (await getCashfreeMode().catch(() => "sandbox")) as "sandbox" | "production";
+  await loadCashfreeSdk(mode);
+  const CashfreeCtor = (window as any).Cashfree;
+  if (!CashfreeCtor) throw new Error("Payment page is unavailable");
+  const cashfree = new CashfreeCtor({ mode });
+  const result = await cashfree.checkout({ paymentSessionId });
+  // `result` shape: { redirect: boolean, paymentDetails?: { payment_status } }
+  const status = String(
+    result?.paymentDetails?.payment_status ??
+      result?.order?.order_status ??
+      (result?.redirect === false ? "" : ""),
+  ).toUpperCase();
+  // If the SDK reports success, ensure the order is marked paid before moving on.
+  if (status === "PAID" || status === "COMPLETE" || status === "SUCCESS") {
+    return status;
+  }
+  return status || "PENDING";
+}
 
 type PayStep =
   | { step: "idle" }
@@ -129,8 +172,6 @@ function CheckoutPage() {
     mutationFn: async () => {
       if (deliveryType === "DELIVERY" && !addressId)
         throw new Error("Please add a delivery address");
-      if (paymentMethod === "ONLINE" && !MERCHANT_VPA)
-        throw new Error("UPI payments aren't set up yet");
       const payload = (items ?? []).map((it: any) => ({
         product_id: it.product.id,
         quantity: Number(it.quantity),
@@ -155,7 +196,9 @@ function CheckoutPage() {
       if (paymentMethod === "ONLINE") {
         const amount = subtotal - discount + deliveryFee;
         setPayStep({ step: "redirecting", orderId, amount });
-        gatewayPayment.mutate({ orderId, amount });
+        // Cashfree is the completed online gateway; IndusInd is kept as a
+        // fallback for either gateway being temporarily unavailable.
+        cashfreePayment.mutate({ orderId, amount });
       } else {
         toast.success("Order placed — pay on delivery");
         navigate({ to: "/orders/$id", params: { id: orderId } });
@@ -197,6 +240,44 @@ function CheckoutPage() {
     onError: (e: Error) => {
       toast.error(`${e.message}. You can still pay via UPI instead.`);
       // Fall back to the manual UPI flow if the gateway can't start the session.
+      setPayStep((prev) =>
+        prev.step === "redirecting"
+          ? { step: "pay", orderId: prev.orderId, amount: prev.amount }
+          : prev,
+      );
+    },
+  });
+
+  // Cashfree hosted checkout — creates the order server-side, then hands the
+  // payment_session_id to the Cashfree JS SDK which opens the secure page.
+  const cashfreePayment = useMutation({
+    mutationFn: async ({ orderId, amount }: { orderId: string; amount: number }) => {
+      const { paymentSessionId } = await initiateCashfreePayment({
+        data: { orderId, amount },
+      });
+      return { orderId, paymentSessionId };
+    },
+    onSuccess: async ({ orderId, paymentSessionId }) => {
+      const status = await runCashfreeCheckout(orderId, paymentSessionId);
+      qc.invalidateQueries();
+      if (status === "PAID" || status === "COMPLETE" || status === "SUCCESS") {
+        toast.success("Payment successful!");
+        setPayStep({ step: "done", orderId });
+      } else {
+        toast.error(
+          status === ""
+            ? "Payment was not completed. You can pay via UPI instead."
+            : `Payment ${status.toLowerCase()} — you can pay via UPI instead.`,
+        );
+        setPayStep((prev) =>
+          prev.step === "redirecting"
+            ? { step: "pay", orderId: prev.orderId, amount: prev.amount }
+            : prev,
+        );
+      }
+    },
+    onError: (e: Error) => {
+      toast.error(`${e.message}. You can still pay via UPI instead.`);
       setPayStep((prev) =>
         prev.step === "redirecting"
           ? { step: "pay", orderId: prev.orderId, amount: prev.amount }
@@ -522,7 +603,7 @@ function CheckoutPage() {
           >
             <label className="flex items-center gap-3 rounded-xl border border-border p-3 cursor-pointer has-[:checked]:border-primary has-[:checked]:bg-primary-soft">
               <RadioGroupItem value="ONLINE" />
-              <span className="font-medium">UPI / GPay / PhonePe</span>
+              <span className="font-medium">UPI / Cards / Netbanking</span>
               <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-semibold text-primary">
                 <Banknote className="h-3 w-3" /> Instant
               </span>
@@ -532,8 +613,8 @@ function CheckoutPage() {
             </label>
           </RadioGroup>
           <p className="mt-2 text-xs text-muted-foreground">
-            Online payment takes you to the bank's secure payment page (UPI, cards & netbanking). If
-            the gateway isn't available you can pay via GPay / PhonePe / Paytm and confirm your UTR
+            Online payment is processed securely through Cashfree (UPI, cards & netbanking). If the
+            gateway isn't available you can pay via GPay / PhonePe / Paytm and confirm your UTR
             instead.
           </p>
         </Card>

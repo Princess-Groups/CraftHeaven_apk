@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Search, Plus, Minus, Trash2, ScanBarcode, Printer, X, Truck } from "lucide-react";
-const logoUrl = "/ach-logo.png";
+import { COMPANY, TAX_INVOICE, AUTO_PRINT_POS, PRINT_CSS } from "@/lib/company";
+const logoUrl = COMPANY.logo;
 
 export const Route = createFileRoute("/admin/pos")({
   head: () => ({ meta: [{ title: "POS Billing — ACH Admin" }] }),
@@ -89,31 +90,12 @@ function POS() {
   const [discount, setDiscount] = useState(0);
   const [shipping, setShipping] = useState(0); // manual courier charges
   const [state, setState] = useState<string>(BUSINESS_STATE);
-  const [invoice, setInvoice] = useState<null | { id: string; at: string }>(null);
+  const [invoice, setInvoice] = useState<null | { id: string; at: string; auto?: boolean }>(null);
   const scanRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     scanRef.current?.focus();
   }, []);
-
-  // Intra-state (same state as business) ⇒ CGST + SGST; inter-state ⇒ IGST.
-  const taxType: "NONE" | "CGST_SGST" | "IGST" = state === BUSINESS_STATE ? "CGST_SGST" : "IGST";
-
-  const { data: products } = useQuery({
-    queryKey: ["pos-products", q],
-    queryFn: async () => {
-      let query = supabase
-        .from("products")
-        .select(
-          "id,name,price,discount_price,stock,unit,barcode,sku,gst_rate,image_urls,cgst_rate,sgst_rate,igst_rate,color,color_variations",
-        )
-        .limit(24);
-      if (q.trim()) query = query.or(`name.ilike.%${q}%,barcode.eq.${q},sku.ilike.%${q}%`);
-      else query = query.order("created_at", { ascending: false });
-      const { data } = await query;
-      return (data ?? []) as Product[];
-    },
-  });
 
   function mapVariations(v: unknown): ColorVariation[] {
     if (!Array.isArray(v)) return [];
@@ -125,7 +107,7 @@ function POS() {
       }));
   }
 
-  function addProduct(p: Product) {
+  const addProduct = useCallback((p: Product) => {
     if (p.stock <= 0) {
       toast.error(`${p.name} is out of stock`);
       return;
@@ -154,7 +136,72 @@ function POS() {
         },
       ];
     });
-  }
+  }, []);
+
+  const onScanCode = useCallback(
+    async (code: string) => {
+      const { data } = await supabase
+        .from("products")
+        .select(
+          "id,name,price,discount_price,stock,barcode,sku,gst_rate,image_urls,cgst_rate,sgst_rate,igst_rate,color,color_variations",
+        )
+        .or(`barcode.eq.${code},sku.eq.${code}`)
+        .maybeSingle();
+      if (data) {
+        addProduct(data as Product);
+        setQ("");
+        scanRef.current?.focus();
+      } else toast.error("Product not found");
+    },
+    [addProduct],
+  );
+
+  // Global USB-scanner capture: scanners type into the focused field, so a
+  // scan while the user is looking at the product grid would be lost. Buffer
+  // keyboard input ourselves and fire the same product lookup, regardless of
+  // focus. A USB scanner types very fast (< ~20ms between chars + Enter).
+  useEffect(() => {
+    let buf = "";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function onKey(e: KeyboardEvent) {
+      if ((e.target as HTMLElement)?.tagName === "INPUT") return; // manual scan box handles it
+      if (e.key === "Enter") {
+        if (buf.length >= 3) {
+          e.preventDefault();
+          void onScanCode(buf);
+        }
+        buf = "";
+        if (timer) clearTimeout(timer);
+        return;
+      }
+      if (e.key.length === 1) {
+        buf += e.key;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => (buf = ""), 80);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onScanCode]);
+
+  // Intra-state (same state as business) ⇒ CGST + SGST; inter-state ⇒ IGST.
+  const taxType: "NONE" | "CGST_SGST" | "IGST" = state === BUSINESS_STATE ? "CGST_SGST" : "IGST";
+
+  const { data: products } = useQuery({
+    queryKey: ["pos-products", q],
+    queryFn: async () => {
+      let query = supabase
+        .from("products")
+        .select(
+          "id,name,price,discount_price,stock,unit,barcode,sku,gst_rate,image_urls,cgst_rate,sgst_rate,igst_rate,color,color_variations",
+        )
+        .limit(24);
+      if (q.trim()) query = query.or(`name.ilike.%${q}%,barcode.eq.${q},sku.ilike.%${q}%`);
+      else query = query.order("created_at", { ascending: false });
+      const { data } = await query;
+      return (data ?? []) as Product[];
+    },
+  });
 
   function pickVariation(i: number, v: { color: string; image_url: string }) {
     setLines((prev) =>
@@ -166,18 +213,7 @@ function POS() {
     e.preventDefault();
     const code = q.trim();
     if (!code) return;
-    const { data } = await supabase
-      .from("products")
-      .select(
-        "id,name,price,discount_price,stock,barcode,sku,gst_rate,image_urls,cgst_rate,sgst_rate,igst_rate,color,color_variations",
-      )
-      .or(`barcode.eq.${code},sku.eq.${code}`)
-      .maybeSingle();
-    if (data) {
-      addProduct(data as Product);
-      setQ("");
-      scanRef.current?.focus();
-    } else toast.error("Product not found");
+    await onScanCode(code);
   }
 
   const subtotal = useMemo(
@@ -224,9 +260,10 @@ function POS() {
       _tax_type: taxType as never,
       _shipping: shipping,
       _state: state as never,
+      _discount: discount,
     });
     if (error) return toast.error(error.message);
-    setInvoice({ id: data as string, at: new Date().toISOString() });
+    setInvoice({ id: data as string, at: new Date().toISOString(), auto: AUTO_PRINT_POS });
     toast.success("Sale completed");
     qc.invalidateQueries();
   }
@@ -241,7 +278,8 @@ function POS() {
     scanRef.current?.focus();
   }
 
-  if (invoice) return <Invoice orderId={invoice.id} at={invoice.at} onDone={reset} />;
+  if (invoice)
+    return <Invoice orderId={invoice.id} at={invoice.at} onDone={reset} auto={invoice.auto} />;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
@@ -556,22 +594,57 @@ function Row({ label, value }: { label: string; value: number }) {
   );
 }
 
-function Invoice({ orderId, at, onDone }: { orderId: string; at: string; onDone: () => void }) {
+function Invoice({
+  orderId,
+  at,
+  onDone,
+  auto,
+}: {
+  orderId: string;
+  at: string;
+  onDone: () => void;
+  auto?: boolean;
+}) {
   const { data } = useQuery({
     queryKey: ["invoice", orderId],
     queryFn: async () => {
       const { data: order } = await supabase.from("orders").select("*").eq("id", orderId).single();
       const { data: items } = await supabase
         .from("order_items")
-        .select("*")
+        .select("*, products(hsn_code)")
         .eq("order_id", orderId);
       return { order, items };
     },
   });
   const order: any = data?.order;
+  const items: any[] = data?.items ?? [];
+
+  // Ship the print stylesheet once so the receipt prints cleanly to either a
+  // narrow thermal printer or a full page.
+  useEffect(() => {
+    if (document.getElementById("ach-print-css")) return;
+    const st = document.createElement("style");
+    st.id = "ach-print-css";
+    st.textContent = PRINT_CSS;
+    document.head.appendChild(st);
+  }, []);
+
+  // Auto-print after the sale is placed (if enabled in config).
+  useEffect(() => {
+    if (auto && data) {
+      const t = setTimeout(() => window.print(), 250);
+      return () => clearTimeout(t);
+    }
+  }, [auto, data]);
+
+  const total = Number(order?.total ?? 0);
+  const invoiceNo = orderId.slice(0, 8).toUpperCase();
+  const taxType = order?.tax_type ?? "NONE";
+  const isCgstSgst = taxType === "CGST_SGST";
+
   return (
     <div className="mx-auto max-w-md">
-      <div className="mb-3 flex items-center justify-between print:hidden">
+      <div className="mb-3 flex items-center justify-between no-print">
         <button onClick={onDone} className="flex items-center gap-1 text-xs text-muted-foreground">
           <X className="h-4 w-4" /> New Sale
         </button>
@@ -582,90 +655,225 @@ function Invoice({ orderId, at, onDone }: { orderId: string; at: string; onDone:
           <Printer className="h-3.5 w-3.5" /> Print
         </button>
       </div>
-      <div className="rounded-xl border border-border bg-white p-6 shadow-sm print:border-0 print:shadow-none">
-        <div className="text-center border-b border-dashed border-border pb-3">
-          <img src={logoUrl} alt="ACH" className="mx-auto h-12 w-12 rounded-full" />
-          <div className="mt-2 font-display text-base font-bold">ATHIRA'S CREATIVE HAVEN</div>
-          <div className="text-[10px] text-muted-foreground">Craft Supplies & Creative Classes</div>
-          <div className="mt-1 text-[10px] text-muted-foreground">Tax Invoice</div>
-        </div>
-        <div className="py-3 text-[11px] text-muted-foreground flex justify-between">
-          <div>Bill #: {orderId.slice(0, 8).toUpperCase()}</div>
-          <div>{new Date(at).toLocaleString()}</div>
-        </div>
-        <table className="w-full text-[11px]">
-          <thead className="border-b border-border text-muted-foreground">
-            <tr>
-              <th className="text-left py-1">Item</th>
-              <th className="text-right">Qty</th>
-              <th className="text-right">Price</th>
-              <th className="text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(data?.items ?? []).map((it: any) => (
-              <tr key={it.id} className="border-b border-border">
-                <td className="py-1 pr-2">
-                  {it.product_name}
-                  {it.variation ? (
-                    <span className="ml-1 rounded bg-emerald-50 px-1 py-0.5 text-[10px] font-semibold text-emerald-700">
-                      {it.variation}
-                    </span>
-                  ) : null}
-                </td>
-                <td className="text-right whitespace-nowrap">
-                  {Number(it.quantity)} {it.unit ?? ""}
-                </td>
-                <td className="text-right">₹{Number(it.unit_price).toFixed(2)}</td>
-                <td className="text-right">₹{Number(it.line_total).toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="mt-3 space-y-1 text-[12px]">
-          <div className="flex justify-between">
-            <span>Subtotal</span>
-            <span>₹{Number(order?.subtotal ?? 0).toFixed(2)}</span>
+
+      {/* The printable receipt — .print-area is the only thing that reaches the printer */}
+      <div className="print-area rounded-xl border border-border bg-white p-6 shadow-sm print:border-0 print:shadow-none">
+        <div className="ind">
+          {/* ===== Header / Company details ===== */}
+          <div className="hdr">
+            {COMPANY.logo ? (
+              <img
+                src={COMPANY.logo}
+                alt={COMPANY.name}
+                className="mx-auto mb-1 h-12 w-12 rounded-full object-contain"
+                style={{ background: "#fff !important" }}
+              />
+            ) : null}
+            <div className="nm">{COMPANY.name}</div>
+            {COMPANY.tagline ? <div className="tg">{COMPANY.tagline}</div> : null}
+            <div className="gst">GSTIN : {COMPANY.gstin}</div>
           </div>
-          {order?.tax_type === "CGST_SGST" ? (
+          <div className="addr text-center">
+            {COMPANY.addressLine1}
+            {COMPANY.addressLine2 ? <>, {COMPANY.addressLine2}</> : null}
+            {COMPANY.addressLine3 ? <>, {COMPANY.addressLine3}</> : null}
+            <div className="row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+              {COMPANY.phone ? <span>Ph: {COMPANY.phone}</span> : null}
+              {COMPANY.email ? <span>{COMPANY.email}</span> : null}
+              {COMPANY.website ? <span>{COMPANY.website}</span> : null}
+            </div>
+            {COMPANY.cin ? <div className="g">CIN: {COMPANY.cin}</div> : null}
+          </div>
+          <div className="sep" />
+
+          {/* ===== Document title ===== */}
+          <div className="hdr">
+            <div className="b" style={{ fontSize: 13 }}>
+              {TAX_INVOICE ? "TAX INVOICE" : "INVOICE"}
+            </div>
+          </div>
+
+          {/* ===== Invoice meta ===== */}
+          <div className="row g">
+            <span>
+              Invoice No: <span className="b">{invoiceNo}</span>
+            </span>
+            <span>{new Date(at).toLocaleString()}</span>
+          </div>
+          <div className="row g">
+            <span>
+              Customer State: <span className="b">{order?.transaction_state || "—"}</span>
+            </span>
+            <span>{isCgstSgst ? "CGST+SGST" : taxType === "IGST" ? "IGST" : "GST"}</span>
+          </div>
+          <div className="sep" />
+
+          {/* ===== Items ===== */}
+          <table>
+            <thead>
+              <tr style={{ background: "transparent" }}>
+                <th style={{ width: "42%" }}>Item / HSN</th>
+                <th className="right" style={{ textAlign: "right", width: "9%" }}>
+                  Qty
+                </th>
+                <th className="right" style={{ textAlign: "right", width: "15%" }}>
+                  Rate
+                </th>
+                <th className="right" style={{ textAlign: "right", width: "11%" }}>
+                  GST%
+                </th>
+                <th className="right" style={{ textAlign: "right", width: "18%" }}>
+                  Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it: any) => {
+                const taxPct = isCgstSgst
+                  ? Number(it.cgst_rate ?? 0) + Number(it.sgst_rate ?? 0)
+                  : Number(it.igst_rate ?? 0);
+                const hsn = it.products?.hsn_code ?? "";
+                return (
+                  <tr key={it.id}>
+                    <td>
+                      <div className="itm b">{it.product_name}</div>
+                      {it.variation ? <div className="g">{it.variation}</div> : null}
+                      {hsn ? <div className="g">HSN: {hsn}</div> : null}
+                    </td>
+                    <td className="right" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      {Number(it.quantity)} {it.unit ?? ""}
+                    </td>
+                    <td className="right" style={{ textAlign: "right" }}>
+                      {Number(it.unit_price).toFixed(2)}
+                    </td>
+                    <td className="right" style={{ textAlign: "right" }}>
+                      {taxPct > 0 ? `${taxPct}%` : "—"}
+                    </td>
+                    <td className="right b" style={{ textAlign: "right" }}>
+                      {Number(it.line_total).toFixed(2)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* ===== Totals ===== */}
+          <div className="sep" />
+          <div className="row">
+            <span>Subtotal</span>
+            <span>{Number(order?.subtotal ?? 0).toFixed(2)}</span>
+          </div>
+          {Number(order?.discount ?? 0) > 0 && (
+            <div className="row">
+              <span>Discount</span>
+              <span>
+                {"-"}
+                {Number(order?.discount ?? 0).toFixed(2)}
+              </span>
+            </div>
+          )}
+          {isCgstSgst ? (
             <>
-              {Number(order?.cgst_amount ?? 0) > 0 && (
-                <div className="flex justify-between">
-                  <span>CGST (Central)</span>
-                  <span>₹{Number(order?.cgst_amount ?? 0).toFixed(2)}</span>
-                </div>
-              )}
-              {Number(order?.sgst_amount ?? 0) > 0 && (
-                <div className="flex justify-between">
-                  <span>SGST (State)</span>
-                  <span>₹{Number(order?.sgst_amount ?? 0).toFixed(2)}</span>
-                </div>
-              )}
+              <div className="row g">
+                <span>CGST (Central GST)</span>
+                <span>{Number(order?.cgst_amount ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="row g">
+                <span>SGST (State GST)</span>
+                <span>{Number(order?.sgst_amount ?? 0).toFixed(2)}</span>
+              </div>
             </>
           ) : (
             Number(order?.igst_amount ?? 0) > 0 && (
-              <div className="flex justify-between">
-                <span>IGST</span>
-                <span>₹{Number(order?.igst_amount ?? 0).toFixed(2)}</span>
+              <div className="row">
+                <span>IGST (Integrated GST)</span>
+                <span>{Number(order?.igst_amount ?? 0).toFixed(2)}</span>
               </div>
             )
           )}
           {Number(order?.shipping_charges ?? 0) > 0 && (
-            <div className="flex justify-between">
+            <div className="row">
               <span>Shipping / Courier</span>
-              <span>₹{Number(order?.shipping_charges ?? 0).toFixed(2)}</span>
+              <span>{Number(order?.shipping_charges ?? 0).toFixed(2)}</span>
             </div>
           )}
-          <div className="flex justify-between border-t border-border pt-1 text-sm font-bold">
+          <div className="sep" />
+          <div className="row tt">
             <span>Total</span>
-            <span>₹{Number(order?.total ?? 0).toFixed(2)}</span>
+            <span>{total.toFixed(2)}</span>
           </div>
-          <div className="text-[10px] text-muted-foreground">Payment: {order?.payment_method}</div>
-        </div>
-        <div className="mt-4 text-center text-[10px] text-muted-foreground">
-          Thank you for shopping with us!
+          <div className="words">
+            <span className="b">Rupees {inWords(total)} only</span>
+          </div>
+
+          {/* ===== Payment ===== */}
+          <div className="row g">
+            <span>Payment</span>
+            <span>{order?.payment_method ?? ""}</span>
+          </div>
+
+          <div className="sep" />
+          <div className="foot b">Thank you for shopping with us!</div>
+          <div className="foot">Goods once sold will not be taken back or exchanged.</div>
         </div>
       </div>
     </div>
   );
+}
+
+// Convert a number (in rupees) into its Indian English-words form for the
+// "Rupees … only" line on the bill.
+const ONES = [
+  "",
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+  "Eleven",
+  "Twelve",
+  "Thirteen",
+  "Fourteen",
+  "Fifteen",
+  "Sixteen",
+  "Seventeen",
+  "Eighteen",
+  "Nineteen",
+];
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+function two(n: number): string {
+  if (n < 20) return ONES[n];
+  return TENS[Math.floor(n / 10)] + (n % 10 ? " " + ONES[n % 10] : "");
+}
+function three(n: number): string {
+  const h = Math.floor(n / 100);
+  const rest = n % 100;
+  return (h ? ONES[h] + " Hundred" + (rest ? " " : "") : "") + (rest ? two(rest) : "");
+}
+function inWords(v: number): string {
+  if (!isFinite(v) || v < 0) return "";
+  let whole = Math.floor(v);
+  const paise = Math.round((v - whole) * 100);
+  let s = "";
+  if (whole >= 1e7) {
+    s += three(Math.floor(whole / 1e7)) + " Crore ";
+    whole %= 1e7;
+  }
+  if (whole >= 1e5) {
+    s += two(Math.floor(whole / 1e5)) + " Lakh ";
+    whole %= 1e5;
+  }
+  if (whole >= 1e3) {
+    s += three(Math.floor(whole / 1e3)) + " Thousand ";
+    whole %= 1e3;
+  }
+  if (whole > 0) s += three(whole);
+  if (s === "") s = "Zero";
+  return s.trim() + (paise ? " And " + two(paise) + " Paise" : "");
 }
