@@ -60,7 +60,10 @@ function loadCashfreeSdk(mode: "sandbox" | "production"): Promise<void> {
 }
 
 async function runCashfreeCheckout(orderId: string, paymentSessionId: string) {
-  const mode = (await getCashfreeMode().catch(() => "sandbox")) as "sandbox" | "production";
+  const modeResult = await getCashfreeMode().catch(() => ({ mode: "sandbox" as const }));
+  const mode = (typeof modeResult === "object" && modeResult && "mode" in modeResult
+    ? (modeResult as { mode: string }).mode
+    : "sandbox") as "sandbox" | "production";
   await loadCashfreeSdk(mode);
   const CashfreeCtor = (window as any).Cashfree;
   if (!CashfreeCtor) throw new Error("Payment page is unavailable");

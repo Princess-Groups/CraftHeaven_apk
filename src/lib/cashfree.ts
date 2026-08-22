@@ -10,12 +10,13 @@
 // Cashfree JS SDK uses to open the hosted checkout on the client.
 
 export const CASHFREE = {
-  // Sandbox vs production. Default sandbox-cashfree URL.
+  // Sandbox vs production. NOTE: both bases include the /pg prefix — the
+  // order-create endpoint is POST {apiBase}/orders, i.e. sandbox.cashfree.com/pg/orders.
   apiBase: () =>
     process.env.CASHFREE_API_BASE ||
     (process.env.CASHFREE_ENV === "production"
-      ? "https://api.cashfree.com"
-      : "https://sandbox.cashfree.com"),
+      ? "https://api.cashfree.com/pg"
+      : "https://sandbox.cashfree.com/pg"),
   clientId: () => process.env.CASHFREE_CLIENT_ID || "",
   clientSecret: () => process.env.CASHFREE_CLIENT_SECRET || "",
   // Pin the API version the order-create payload is built against. Bump when
