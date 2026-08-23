@@ -284,6 +284,10 @@ export const initiateCashfreePayment = createServerFn({ method: "POST" })
     const phone = customer?.phone?.replace(/\D/g, "").slice(-10) ?? "";
     const validPhone = /^\d{10}$/.test(phone) ? phone : "9999999999";
 
+    // Build the return URL so Cashfree redirects back to checkout after payment.
+    // Cashfree appends its own params (cf_order_id, payment_session_id, etc.).
+    const returnUrl = `${CASHFREE.siteUrl()}/checkout?orderId=${encodeURIComponent(orderId)}`;
+
     // Create the Cashfree order.
     const requestBody = {
       order_id: cfOrderId,
@@ -295,6 +299,9 @@ export const initiateCashfreePayment = createServerFn({ method: "POST" })
         customer_name: customer?.full_name?.slice(0, 100) || "Customer",
         customer_phone: validPhone,
         customer_email: "",
+      },
+      order_meta: {
+        return_url: returnUrl,
       },
     };
     const res = await fetch(`${CASHFREE.apiBase()}/orders`, {
