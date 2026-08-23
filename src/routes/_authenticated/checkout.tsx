@@ -14,6 +14,7 @@ import {
   initiateGatewayPayment,
   initiateCashfreePayment,
   getCashfreeMode,
+  verifyCashfreePayment,
 } from "@/lib/payment.functions";
 import { notifyOrderWhatsApp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
@@ -255,13 +256,20 @@ function CheckoutPage() {
   // payment_session_id to the Cashfree JS SDK which opens the secure page.
   const cashfreePayment = useMutation({
     mutationFn: async ({ orderId, amount }: { orderId: string; amount: number }) => {
-      const { paymentSessionId } = await initiateCashfreePayment({
+      const result = await initiateCashfreePayment({
         data: { orderId, amount },
       });
-      return { orderId, paymentSessionId };
+      return { orderId, paymentSessionId: result.paymentSessionId, cfOrderId: result.orderId };
     },
-    onSuccess: async ({ orderId, paymentSessionId }) => {
+    onSuccess: async ({ orderId, paymentSessionId, cfOrderId }) => {
       const status = await runCashfreeCheckout(orderId, paymentSessionId);
+      // After SDK success, verify payment server-side so the order is marked PAID
+      // even if the webhook doesn't fire.
+      if (status === "PAID" || status === "COMPLETE" || status === "SUCCESS") {
+        await verifyCashfreePayment({ data: { orderId, cfOrderId } }).catch((err) =>
+          console.error("[checkout] verify payment failed", err),
+        );
+      }
       qc.invalidateQueries();
       if (status === "PAID" || status === "COMPLETE" || status === "SUCCESS") {
         toast.success("Payment successful!");

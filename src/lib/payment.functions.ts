@@ -329,6 +329,68 @@ export const initiateCashfreePayment = createServerFn({ method: "POST" })
   });
 
 /**
+ * Verify a Cashfree payment server-side and mark the order PAID if confirmed.
+ * Called by the client after the Cashfree JS SDK reports success — this is a
+ * belt-and-suspenders check in case the webhook doesn't fire.
+ */
+export const verifyCashfreePayment = createServerFn({ method: "POST" })
+  .validator((d: { orderId: string; cfOrderId: string }) => d)
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { orderId, cfOrderId } = data;
+
+    if (!CASHFREE.clientId() || !CASHFREE.clientSecret()) {
+      throw new Error("Cashfree isn't configured");
+    }
+
+    // Ask Cashfree for the order status.
+    const res = await fetch(`${CASHFREE.apiBase()}/orders/${cfOrderId}`, {
+      method: "GET",
+      headers: cashfreeHeaders(),
+    });
+    const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+
+    if (!res.ok || !json) {
+      console.error("[cashfree] verify order failed", res.status, json);
+      throw new Error("Could not verify payment with Cashfree");
+    }
+
+    const orderStatus = String(json.order_status ?? "").toUpperCase();
+
+    // Only mark PAID when Cashfree confirms it.
+    if (orderStatus === "PAID" || orderStatus === "SUCCESS" || orderStatus === "COMPLETE") {
+      // Find the internal order from the payments table.
+      const { data: payRow } = await supabaseAdmin
+        .from("payments")
+        .select("order_id")
+        .eq("gateway_order_id", cfOrderId)
+        .maybeSingle();
+
+      const targetOrderId = payRow?.order_id ?? orderId;
+
+      const { error } = await supabaseAdmin.rpc("mark_order_paid_by_gateway", {
+        _order_id: targetOrderId,
+        _gateway: "cashfree",
+        _gateway_order_id: cfOrderId,
+        _txn_id: String(json.cf_order_id ?? cfOrderId),
+        _response: {
+          orderStatus,
+          orderId: cfOrderId,
+          verifiedAt: new Date().toISOString(),
+        },
+      });
+      if (error) {
+        console.error("[cashfree] failed to mark order paid", error);
+        throw error;
+      }
+
+      return { ok: true, orderStatus };
+    }
+
+    return { ok: false, orderStatus };
+  });
+
+/**
  * Cashfree webhook handler. Cashfree POSTs events (including "payment.orders"
  * with status transitions) to /api/payment/cashfree-webhook. We verify the HMAC
  * signature, then mark the order PAID via the same generic RPC the IndusInd
