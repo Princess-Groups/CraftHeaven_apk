@@ -274,30 +274,35 @@ export const initiateCashfreePayment = createServerFn({ method: "POST" })
         currency: "INR",
       },
     });
-    if (createErr) throw new Error("Could not start payment");
+    if (createErr) {
+      console.error("[cashfree] payments insert failed", createErr);
+      throw new Error(`Could not start payment: ${createErr.message ?? createErr.code ?? "unknown"}`);
+    }
+
+    // Cashfree requires a valid 10-digit phone number. Fall back to a default
+    // if the customer profile is missing one so the API doesn't reject the request.
+    const phone = customer?.phone?.replace(/\D/g, "").slice(-10) ?? "";
+    const validPhone = /^\d{10}$/.test(phone) ? phone : "9999999999";
 
     // Create the Cashfree order.
+    const requestBody = {
+      order_id: cfOrderId,
+      order_amount: dbAmount,
+      order_currency: "INR",
+      order_note: `Order ${orderId.slice(0, 8).toUpperCase()}`,
+      customer_details: {
+        customer_id: customerId,
+        customer_name: customer?.full_name?.slice(0, 100) || "Customer",
+        customer_phone: validPhone,
+        customer_email: "",
+      },
+    };
     const res = await fetch(`${CASHFREE.apiBase()}/orders`, {
       method: "POST",
       headers: cashfreeHeaders(),
-      body: JSON.stringify({
-        order_id: cfOrderId,
-        order_amount: dbAmount,
-        order_currency: "INR",
-        order_note: `Order ${orderId.slice(0, 8).toUpperCase()}`,
-        customer_details: {
-          customer_id: customerId,
-          customer_name: customer?.full_name?.slice(0, 100) ?? "",
-          customer_phone: customer?.phone?.slice(0, 12) ?? "",
-          customer_email: "",
-        },
-      }),
+      body: JSON.stringify(requestBody),
     });
-    const json = (await res.json().catch(() => null)) as {
-      payment_session_id?: string;
-      order_status?: string;
-      order_id?: string;
-    } | null;
+    const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
     if (!res.ok || !json) {
       console.error("[cashfree] create order failed", res.status, json);
       // Leave the payments row in INITIATED so the UI can fall back to UPI.
