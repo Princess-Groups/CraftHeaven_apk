@@ -625,7 +625,7 @@ function Purchases() {
     { key: "purchase_freight_charges", label: "Freight Charges", w: 100, type: "number" },
     { key: "other_charges", label: "Other Charges", w: 90, type: "number" },
     { key: "total_unit_cost", label: "Total Unit Cost", w: 100, type: "number", ro: true },
-    { key: "final_purchase_cost", label: "Final Purchase Cost", w: 110, type: "number", ro: true },
+    { key: "final_purchase_cost", label: "Final Cost", w: 110, type: "number", ro: true },
     { key: "retail_selling_price", label: "Retail Price", w: 90, type: "number" },
     { key: "wholesale_price", label: "Wholesale Price", w: 95, type: "number" },
     { key: "profit_per_piece_pct", label: "Profit %", w: 70, type: "number", ro: true },
