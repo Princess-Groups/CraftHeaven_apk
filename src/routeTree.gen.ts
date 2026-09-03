@@ -23,6 +23,7 @@ import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedWishlistRouteImport } from './routes/_authenticated/wishlist'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin/analytics'
+import { Route as AdminBillingRouteImport } from './routes/admin/billing'
 import { Route as AdminBrandsRouteImport } from './routes/admin/brands'
 import { Route as AdminCategoriesRouteImport } from './routes/admin/categories'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
@@ -108,6 +109,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminBillingRoute = AdminBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminBrandsRoute = AdminBrandsRouteImport.update({
@@ -209,6 +215,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof AuthenticatedProfileRoute
   '/wishlist': typeof AuthenticatedWishlistRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/brands': typeof AdminBrandsRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/customers': typeof AdminCustomersRoute
@@ -240,6 +247,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileRoute
   '/wishlist': typeof AuthenticatedWishlistRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/brands': typeof AdminBrandsRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/customers': typeof AdminCustomersRoute
@@ -274,6 +282,7 @@ export interface FileRoutesById {
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/wishlist': typeof AuthenticatedWishlistRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/brands': typeof AdminBrandsRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/customers': typeof AdminCustomersRoute
@@ -308,6 +317,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/wishlist'
     | '/admin/analytics'
+    | '/admin/billing'
     | '/admin/brands'
     | '/admin/categories'
     | '/admin/customers'
@@ -339,6 +349,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/wishlist'
     | '/admin/analytics'
+    | '/admin/billing'
     | '/admin/brands'
     | '/admin/categories'
     | '/admin/customers'
@@ -372,6 +383,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profile'
     | '/_authenticated/wishlist'
     | '/admin/analytics'
+    | '/admin/billing'
     | '/admin/brands'
     | '/admin/categories'
     | '/admin/customers'
@@ -501,6 +513,13 @@ declare module '@tanstack/react-router' {
       path: '/analytics'
       fullPath: '/admin/analytics'
       preLoaderRoute: typeof AdminAnalyticsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/billing': {
+      id: '/admin/billing'
+      path: '/billing'
+      fullPath: '/admin/billing'
+      preLoaderRoute: typeof AdminBillingRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/brands': {
@@ -659,6 +678,7 @@ const AuthenticatedRouteRouteWithChildren =
 
 interface AdminRouteRouteChildren {
   AdminAnalyticsRoute: typeof AdminAnalyticsRoute
+  AdminBillingRoute: typeof AdminBillingRoute
   AdminBrandsRoute: typeof AdminBrandsRoute
   AdminCategoriesRoute: typeof AdminCategoriesRoute
   AdminCustomersRoute: typeof AdminCustomersRoute
@@ -678,6 +698,7 @@ interface AdminRouteRouteChildren {
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminAnalyticsRoute: AdminAnalyticsRoute,
+  AdminBillingRoute: AdminBillingRoute,
   AdminBrandsRoute: AdminBrandsRoute,
   AdminCategoriesRoute: AdminCategoriesRoute,
   AdminCustomersRoute: AdminCustomersRoute,

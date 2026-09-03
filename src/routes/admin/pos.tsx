@@ -1,15 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { Search, Plus, Minus, Trash2, ScanBarcode, Printer, X, Truck } from "lucide-react";
-import { COMPANY, TAX_INVOICE, AUTO_PRINT_POS, PRINT_CSS } from "@/lib/company";
-const logoUrl = COMPANY.logo;
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/admin/pos")({
-  head: () => ({ meta: [{ title: "POS Billing — ACH Admin" }] }),
-  component: POS,
+  head: () => ({ meta: [{ title: "Billing — ACH Admin" }] }),
+  beforeLoad: () => {
+    throw redirect({ to: "/admin/billing" });
+  },
+  component: () => null,
 });
 
 type ColorVariation = { color: string; image_url: string };

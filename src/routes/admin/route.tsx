@@ -10,22 +10,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  LayoutDashboard,
-  ScanBarcode,
   ShoppingCart,
-  PackageOpen,
-  Boxes,
-  Tags,
-  Layers,
-  Truck,
-  Users,
+  ScanBarcode,
   ClipboardList,
+  Tags,
   Warehouse,
   BarChart3,
-  LineChart,
   UserCog,
   Settings,
-  Percent,
   Bell,
   LogOut,
   Menu,
@@ -46,26 +38,25 @@ export const Route = createFileRoute("/admin")({
       .eq("user_id", userRes.user.id);
     const allowed = roles?.some((r) => r.role === "admin" || r.role === "staff");
     if (!allowed) throw redirect({ to: "/admin/login" });
-    return { user: userRes.user, isAdmin: roles?.some((r) => r.role === "admin") ?? false };
+    const isAdmin = roles?.some((r) => r.role === "admin") ?? false;
+    const isStaff = roles?.some((r) => r.role === "staff") ?? false;
+    // Staff can only access billing
+    if (isStaff && !isAdmin && location.pathname !== "/admin/billing" && location.pathname !== "/admin/login") {
+      throw redirect({ to: "/admin/billing" });
+    }
+    return { user: userRes.user, isAdmin, isStaff };
   },
   component: AdminLayout,
 });
 
 const NAV: { to: string; label: string; icon: React.ElementType; exact?: boolean }[] = [
-  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { to: "/admin/pos", label: "Billing (POS)", icon: ScanBarcode },
-  { to: "/admin/purchases", label: "Purchase Entry", icon: ShoppingCart },
-  { to: "/admin/products", label: "Products", icon: PackageOpen },
-  { to: "/admin/categories", label: "Categories", icon: Tags },
-  { to: "/admin/brands", label: "Brands", icon: Layers },
-  { to: "/admin/suppliers", label: "Suppliers", icon: Truck },
-  { to: "/admin/customers", label: "Customers", icon: Users },
+  { to: "/admin/purchases", label: "Purchase Entry", icon: ShoppingCart, exact: true },
+  { to: "/admin/billing", label: "Billing", icon: ScanBarcode },
   { to: "/admin/orders", label: "Orders", icon: ClipboardList },
+  { to: "/admin/categories", label: "Categories", icon: Tags },
   { to: "/admin/inventory", label: "Inventory", icon: Warehouse },
-  { to: "/admin/reports", label: "Reports", icon: BarChart3 },
-  { to: "/admin/analytics", label: "Analytics", icon: LineChart },
-  { to: "/admin/profit", label: "Profit Percentage", icon: Percent },
-  { to: "/admin/users", label: "Users & Staff", icon: UserCog },
+  { to: "/admin/reports", label: "Reports & Analytics", icon: BarChart3 },
+  { to: "/admin/users", label: "Users / Staff", icon: UserCog },
   { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -73,6 +64,10 @@ function AdminLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const { isAdmin } = Route.useRouteContext();
+
+  // Staff only sees Billing; admin sees everything
+  const visibleNav = isAdmin ? NAV : NAV.filter((n) => n.to === "/admin/billing");
 
   // Always call the hook - just disable it on login page
   const { data: notifCount } = useQuery({
@@ -117,7 +112,7 @@ function AdminLayout() {
           </button>
         </div>
         <nav className="p-2 overflow-y-auto h-[calc(100vh-64px)]">
-          {NAV.map((n) => {
+          {visibleNav.map((n) => {
             const Icon = n.icon;
             const active = n.exact
               ? pathname === n.to
@@ -154,14 +149,17 @@ function AdminLayout() {
               Billing & Inventory Management
             </div>
           </div>
-          <button className="relative grid h-9 w-9 place-items-center rounded-full bg-primary-soft hover:bg-secondary-soft">
+          <Link
+            to="/admin/inventory"
+            className="relative grid h-9 w-9 place-items-center rounded-full bg-primary-soft hover:bg-secondary-soft"
+          >
             <Bell className="h-4 w-4 text-foreground" />
             {notifCount ? (
               <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-primary px-1 text-[9px] font-bold text-white grid place-items-center">
                 {notifCount}
               </span>
             ) : null}
-          </button>
+          </Link>
           <button
             onClick={signOut}
             className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary-soft"
