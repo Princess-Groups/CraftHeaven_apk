@@ -1,7 +1,7 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useState, useRef, useCallback, useMemo, useEffect } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect, memo } from "react";
 import {
   Plus,
   Trash2,
@@ -30,7 +30,7 @@ type ColorVariation = { color: string; image_url: string };
 
 type ProductRow = {
   _rowId: string;
-  id: string; // product id in DB
+  id: string;
   serial: number;
   barcode: string;
   supplier_name: string;
@@ -134,8 +134,6 @@ function calcRow(r: ProductRow): ProductRow {
   const pieces = Number(r.pieces_sold) || 0;
   const sold_for_val = Number(r.sold_for) || 0;
   const total_sold = pieces * sold_for_val;
-  const min_stock = Number(r.minimum_stock) || 0;
-  const curr_stock = Number(r.current_stock) || 0;
   const del_packing = final_purchase_cost * 0.02;
   const del_charge = final_purchase_cost * 0.05;
   const gst = final_purchase_cost * 0.05;
@@ -157,6 +155,97 @@ function calcRow(r: ProductRow): ProductRow {
   };
 }
 
+// ---------- Stable Cell component (outside parent) ----------
+// We store patchRow in a ref so the Cell never needs to re-render
+// when only the handler reference changes.
+let _patchRowRef: ((idx: number, patch: Partial<ProductRow>) => void) | null = null;
+let _handleImageUploadRef: ((idx: number, file: File) => void) | null = null;
+let _uploadingRef: string | null = null;
+
+const Cell = memo(function Cell({
+  row,
+  field,
+  type = "text",
+  options,
+  width,
+  readOnly,
+}: {
+  row: ProductRow;
+  field: keyof ProductRow;
+  type?: string;
+  options?: readonly string[];
+  width?: string;
+  readOnly?: boolean;
+}) {
+  const val = row[field];
+
+  if (options) {
+    return (
+      <select
+        value={String(val)}
+        onChange={(e) => _patchRowRef?.(row.serial - 1, { [field]: e.target.value })}
+        className="h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft"
+        style={{ minWidth: width ?? 80 }}
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+    );
+  }
+
+  if (type === "image") {
+    return (
+      <div className="flex items-center gap-1 px-1">
+        {val ? (
+          <div className="relative">
+            <img src={String(val)} alt="" className="h-7 w-7 rounded object-cover" />
+            <button
+              onClick={() => _patchRowRef?.(row.serial - 1, { image_url: "" })}
+              className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full bg-rose-500 text-white grid place-items-center"
+            >
+              <X className="h-2 w-2" />
+            </button>
+          </div>
+        ) : null}
+        <label className="cursor-pointer text-muted-foreground/60 hover:text-secondary">
+          <input
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) _handleImageUploadRef?.(row.serial - 1, f);
+            }}
+          />
+          {_uploadingRef === row._rowId ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <ImageIcon className="h-3.5 w-3.5" />
+          )}
+        </label>
+      </div>
+    );
+  }
+
+  return (
+    <input
+      type={type}
+      defaultValue={String(val ?? "")}
+      readOnly={readOnly}
+      onChange={(e) => {
+        const v = type === "number" ? Number(e.target.value) || 0 : e.target.value;
+        _patchRowRef?.(row.serial - 1, { [field]: v });
+      }}
+      className={`h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none ${
+        readOnly ? "text-muted-foreground font-semibold" : "focus:bg-secondary-soft"
+      } ${type === "number" ? "text-right" : ""}`}
+      style={{ minWidth: width ?? 80 }}
+      step={type === "number" ? "0.01" : undefined}
+    />
+  );
+});
+
 // ---------- Component ----------
 function Purchases() {
   const qc = useQueryClient();
@@ -166,6 +255,10 @@ function Purchases() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Refs to keep stable references for Cell
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
 
   // Re-Stock: read URL param and pre-fill product
   const { restock: restockId } = useSearch({ from: "/admin/purchases" });
@@ -203,7 +296,7 @@ function Purchases() {
   });
   const { data: categories } = useQuery({
     queryKey: ["cats-lite"],
-    queryFn: async () => (await supabase.from("categories").select("id,name").order("name")).data ?? [],
+    queryFn: async () => (await supabase.from("categories").select("id,name")).data ?? [],
   });
 
   // Existing products for search/edit
@@ -248,12 +341,54 @@ function Purchases() {
   }, [calculatedRows]);
 
   // ---- Row operations ----
-  function patchRow(idx: number, patch: Partial<ProductRow>) {
+  const patchRow = useCallback((idx: number, patch: Partial<ProductRow>) => {
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
-  }
+  }, []);
+
+  // Keep the module-level refs updated so Cell can use them
+  useEffect(() => { _patchRowRef = patchRow; }, [patchRow]);
+
+  const handleImageUpload = useCallback(async (idx: number, file: File) => {
+    if (!file.type.startsWith("image/")) return toast.error("Select an image file");
+    if (file.size > 5 * 1024 * 1024) return toast.error("Image must be less than 5MB");
+    setUploading(rowsRef.current[idx]._rowId);
+    try {
+      const url = await uploadProductImage(file);
+      patchRow(idx, { image_url: url });
+      toast.success("Image uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(null);
+    }
+  }, [patchRow]);
+
+  useEffect(() => { _handleImageUploadRef = handleImageUpload; }, [handleImageUpload]);
+  useEffect(() => { _uploadingRef = uploading; }, [uploading]);
 
   function addRow() {
     setRows((prev) => [...prev, blankRow(prev.length + 1)]);
+  }
+
+  function addProduct() {
+    setRows((prev) => [...prev, blankRow(prev.length + 1)]);
+    // Focus the new row's Product Name field after render
+    setTimeout(() => {
+      const table = tableRef.current;
+      if (!table) return;
+      const rows = table.querySelectorAll("tbody tr");
+      const lastRow = rows[rows.length - 1];
+      if (lastRow) {
+        const inputs = lastRow.querySelectorAll("input");
+        // Product Name is column index 7 (0-based)
+        for (const inp of inputs) {
+          if (inp.getAttribute("type") === "text" && !inp.readOnly) {
+            inp.focus();
+            break;
+          }
+        }
+      }
+    }, 50);
   }
 
   function duplicateRow(idx: number) {
@@ -271,24 +406,6 @@ function Purchases() {
       const next = prev.filter((_, i) => i !== idx);
       return next.map((r, i) => ({ ...r, serial: i + 1 }));
     });
-  }
-
-  // ---- Load existing product into a row ----
-  function loadProduct(idx: number, product: typeof existingProducts extends (infer T)[] | null ? T : never) {
-    if (!product) return;
-    patchRow(idx, {
-      id: product.id,
-      barcode: product.barcode ?? "",
-      name: product.name ?? "",
-      category_id: product.category_id ?? "",
-      current_stock: product.stock ?? 0,
-      minimum_stock: product.reorder_level ?? 5,
-      per_packet_unit: product.unit ?? "Nos",
-      retail_selling_price: Number(product.price ?? 0),
-      unit_price: Number(product.purchase_price ?? 0),
-      image_url: product.image_urls?.[0] ?? "",
-    });
-    toast.success(`Loaded: ${product.name}`);
   }
 
   // ---- Save all rows ----
@@ -319,10 +436,8 @@ function Purchases() {
         };
 
         if (r.id) {
-          // Update existing product
           await supabase.from("products").update(productPayload).eq("id", r.id);
         } else {
-          // Insert new product
           const { data: newProduct } = await supabase
             .from("products")
             .insert(productPayload)
@@ -385,7 +500,7 @@ function Purchases() {
       const newRows: ProductRow[] = [];
       for (let i = 1; i < lines.length; i++) {
         const cols = lines[i].split(",");
-        if (!cols[6]?.trim()) continue; // must have product name
+        if (!cols[6]?.trim()) continue;
         newRows.push({
           ...blankRow(newRows.length + 1),
           barcode: cols[1] ?? "",
@@ -423,107 +538,7 @@ function Purchases() {
     e.target.value = "";
   }
 
-  // ---- Upload image for a row ----
-  async function handleImageUpload(idx: number, file: File) {
-    if (!file.type.startsWith("image/")) return toast.error("Select an image file");
-    if (file.size > 5 * 1024 * 1024) return toast.error("Image must be less than 5MB");
-    setUploading(rows[idx]._rowId);
-    try {
-      const url = await uploadProductImage(file);
-      patchRow(idx, { image_url: url });
-      toast.success("Image uploaded");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(null);
-    }
-  }
-
-  // ---- Inline editable cell component ----
-  function Cell({
-    idx,
-    field,
-    type = "text",
-    options,
-    width,
-    readOnly,
-    formatter,
-  }: {
-    idx: number;
-    field: keyof ProductRow;
-    type?: string;
-    options?: readonly string[];
-    width?: string;
-    readOnly?: boolean;
-    formatter?: (v: number) => string;
-  }) {
-    const val = calculatedRows[idx][field];
-    if (options) {
-      return (
-        <select
-          value={String(val)}
-          onChange={(e) => patchRow(idx, { [field]: e.target.value })}
-          className="h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft"
-          style={{ minWidth: width ?? 80 }}
-        >
-          {options.map((o) => (
-            <option key={o} value={o}>{o}</option>
-          ))}
-        </select>
-      );
-    }
-    if (type === "image") {
-      return (
-        <div className="flex items-center gap-1 px-1">
-          {val ? (
-            <div className="relative">
-              <img src={String(val)} alt="" className="h-7 w-7 rounded object-cover" />
-              <button
-                onClick={() => patchRow(idx, { image_url: "" })}
-                className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full bg-rose-500 text-white grid place-items-center"
-              >
-                <X className="h-2 w-2" />
-              </button>
-            </div>
-          ) : null}
-          <label className="cursor-pointer text-muted-foreground/60 hover:text-secondary">
-            <input
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleImageUpload(idx, f);
-              }}
-            />
-            {uploading === rows[idx]._rowId ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <ImageIcon className="h-3.5 w-3.5" />
-            )}
-          </label>
-        </div>
-      );
-    }
-    return (
-      <input
-        type={type}
-        value={formatter ? formatter(Number(val)) : String(val ?? "")}
-        readOnly={readOnly}
-        onChange={(e) => {
-          const v = type === "number" ? Number(e.target.value) || 0 : e.target.value;
-          patchRow(idx, { [field]: v });
-        }}
-        className={`h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none ${
-          readOnly ? "text-muted-foreground font-semibold" : "focus:bg-secondary-soft"
-        } ${type === "number" ? "text-right" : ""}`}
-        style={{ minWidth: width ?? 80 }}
-        step={type === "number" ? "0.01" : undefined}
-      />
-    );
-  }
-
-  // Column definitions for the sticky header
+  // Column definitions
   const COLS = [
     { key: "serial", label: "S.No", w: 45, type: "text", ro: true },
     { key: "barcode", label: "Barcode", w: 100, type: "text" },
@@ -565,13 +580,13 @@ function Purchases() {
     { key: "mop", label: "MOP", w: 80, type: "number" },
   ];
 
-  function renderCell(idx: number, col: (typeof COLS)[number]) {
+  function renderCell(idx: number, col: (typeof COLS)[number], row: ProductRow) {
     const field = col.key as keyof ProductRow;
     switch (col.type) {
       case "select-supplier":
         return (
           <select
-            value={String(calculatedRows[idx][field])}
+            value={String(row[field])}
             onChange={(e) => patchRow(idx, { [field]: e.target.value })}
             className="h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft"
             style={{ minWidth: col.w }}
@@ -585,7 +600,7 @@ function Purchases() {
       case "select-category":
         return (
           <select
-            value={String(calculatedRows[idx][field])}
+            value={String(row[field])}
             onChange={(e) => patchRow(idx, { [field]: e.target.value })}
             className="h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft"
             style={{ minWidth: col.w }}
@@ -597,29 +612,17 @@ function Purchases() {
           </select>
         );
       case "select-unit":
-        return (
-          <Cell idx={idx} field={field} options={UNITS} width={col.w} />
-        );
+        return <Cell row={row} field={field} options={UNITS} width={col.w} />;
       case "select-payment":
-        return (
-          <Cell idx={idx} field={field} options={PAYMENT_METHODS} width={col.w} />
-        );
+        return <Cell row={row} field={field} options={PAYMENT_METHODS} width={col.w} />;
       case "image":
-        return <Cell idx={idx} field={field} type="image" />;
+        return <Cell row={row} field={field} type="image" />;
       case "date":
-        return <Cell idx={idx} field={field} type="date" width={col.w} />;
+        return <Cell row={row} field={field} type="date" width={col.w} />;
       case "number":
-        return (
-          <Cell
-            idx={idx}
-            field={field}
-            type="number"
-            width={col.w}
-            readOnly={col.ro}
-          />
-        );
+        return <Cell row={row} field={field} type="number" width={col.w} readOnly={col.ro} />;
       default:
-        return <Cell idx={idx} field={field} width={col.w} readOnly={col.ro} />;
+        return <Cell row={row} field={field} width={col.w} readOnly={col.ro} />;
     }
   }
 
@@ -648,15 +651,15 @@ function Purchases() {
           <Download className="h-3.5 w-3.5" /> Export CSV
         </button>
         <button
-          onClick={addRow}
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-secondary hover:bg-secondary-soft"
+          onClick={addProduct}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary/90"
         >
-          <Plus className="h-3.5 w-3.5" /> Add Row
+          <Plus className="h-3.5 w-3.5" /> Add Product
         </button>
         <button
           onClick={saveAll}
           disabled={saving}
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
+          className="flex items-center gap-1.5 rounded-lg bg-secondary px-4 py-2 text-xs font-semibold text-white hover:bg-secondary/90 disabled:opacity-60"
         >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           {saving ? "Saving…" : "Save All"}
@@ -674,11 +677,9 @@ function Purchases() {
               key={p.id}
               onClick={() => {
                 const emptyIdx = calculatedRows.findIndex((r) => !r.name.trim());
-                const targetIdx = emptyIdx >= 0 ? emptyIdx : calculatedRows.length;
                 if (emptyIdx < 0) {
                   setRows((prev) => [...prev, blankRow(prev.length + 1)]);
                 }
-                // Use setTimeout to ensure the new row exists
                 setTimeout(() => {
                   setRows((prev) => {
                     const idx = emptyIdx >= 0 ? emptyIdx : prev.length - 1;
@@ -723,7 +724,6 @@ function Purchases() {
       <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
         <div ref={tableRef} className="overflow-auto max-h-[calc(100vh-220px)]">
           <table className="border-collapse" style={{ minWidth: COLS.reduce((s, c) => s + c.w, 0) }}>
-            {/* Sticky header */}
             <thead className="sticky top-0 z-20">
               <tr>
                 {COLS.map((col) => (
@@ -749,7 +749,7 @@ function Purchases() {
                       className="border border-border p-0 h-8"
                       style={{ minWidth: col.w, maxWidth: col.w + 20 }}
                     >
-                      {renderCell(idx, col)}
+                      {renderCell(idx, col, row)}
                     </td>
                   ))}
                   <td className="border border-border p-1 h-8 w-20">
@@ -774,7 +774,6 @@ function Purchases() {
                 </tr>
               ))}
             </tbody>
-            {/* Grand totals row */}
             <tfoot>
               <tr className="bg-muted font-bold">
                 <td colSpan={13} className="border border-border px-2 py-1.5 text-[11px] text-right text-muted-foreground">
@@ -783,15 +782,11 @@ function Purchases() {
                 <td className="border border-border px-1.5 py-1.5 text-[11px] text-right">
                   ₹{grandTotals.total_price.toFixed(2)}
                 </td>
-                <td colSpan={3} className="border border-border px-1.5 py-1.5 text-[11px] text-right">
-                  —
-                </td>
+                <td colSpan={3} className="border border-border px-1.5 py-1.5 text-[11px] text-right">—</td>
                 <td className="border border-border px-1.5 py-1.5 text-[11px] text-right">
                   ₹{grandTotals.final_purchase_cost.toFixed(2)}
                 </td>
-                <td colSpan={14} className="border border-border px-1.5 py-1.5 text-[11px] text-right">
-                  —
-                </td>
+                <td colSpan={14} className="border border-border px-1.5 py-1.5 text-[11px] text-right">—</td>
                 <td className="border border-border px-1.5 py-1.5 text-[11px] text-right text-emerald-700">
                   ₹{grandTotals.total_final.toFixed(2)}
                 </td>
@@ -810,7 +805,7 @@ function Purchases() {
 
       {/* Quick add row button at bottom */}
       <button
-        onClick={addRow}
+        onClick={addProduct}
         className="w-full rounded-xl border-2 border-dashed border-border py-3 text-xs font-semibold text-muted-foreground hover:border-secondary hover:text-secondary transition"
       >
         <Plus className="inline h-3.5 w-3.5 mr-1" /> Add new product row
