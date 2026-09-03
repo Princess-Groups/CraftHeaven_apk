@@ -20,6 +20,12 @@ import { toast } from "sonner";
 import { uploadProductImage } from "@/lib/upload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/admin/purchases")({
   head: () => ({ meta: [{ title: "Purchase Entry — ACH Admin" }] }),
@@ -236,6 +242,8 @@ function Purchases() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogIdx, setDialogIdx] = useState<number | null>(null);
 
   // Refs to keep stable references for Cell
   const rowsRef = useRef(rows);
@@ -352,15 +360,15 @@ function Purchases() {
   }
 
   function addProduct() {
+    const newIdx = rows.length;
     setRows((prev) => [...prev, blankRow(prev.length + 1)]);
-    // Scroll to the new card after render
-    setTimeout(() => {
-      const cards = document.querySelectorAll("[data-product-card]");
-      const lastCard = cards[cards.length - 1];
-      if (lastCard) {
-        lastCard.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }, 100);
+    setDialogIdx(newIdx);
+    setDialogOpen(true);
+  }
+
+  function editProduct(idx: number) {
+    setDialogIdx(idx);
+    setDialogOpen(true);
   }
 
   function duplicateRow(idx: number) {
@@ -835,90 +843,70 @@ function Purchases() {
         </div>
       )}
 
-      {/* Product Entry Cards */}
-      <div className="space-y-4">
-        {calculatedRows.map((row, idx) => (
-          <div key={row._rowId} className="space-y-3">
-            {/* Product Entry Card */}
-            <Card data-product-card className="shadow-card border-border/60">
-              <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base font-bold text-primary">
-                  Product Entry {String(row.serial).padStart(2, "0")}
-                </CardTitle>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => duplicateRow(idx)}
-                    className="rounded-lg p-1.5 hover:bg-secondary-soft transition"
-                    title="Duplicate product"
-                  >
-                    <Copy className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                  <button
-                    onClick={() => deleteRow(idx)}
-                    disabled={calculatedRows.length <= 1}
-                    className="rounded-lg p-1.5 hover:bg-rose-50 disabled:opacity-30 transition"
-                    title="Delete product"
-                  >
-                    <Trash2 className="h-4 w-4 text-rose-600" />
-                  </button>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-4">
-                  {FIELD_GROUPS.map((group) => {
-                    const sectionKey = `${row._rowId}-${group.title}`;
-                    const isCollapsed = collapsedSections[sectionKey] ?? (group.title !== "Product Details" && group.title !== "Per Packet Unit & Total Unit");
-                    return (
-                      <div key={group.title} className="rounded-xl border border-border/50 bg-white/50 overflow-hidden">
-                        <button
-                          onClick={() => toggleSection(row._rowId, group.title)}
-                          className="w-full flex items-center justify-between px-4 py-2.5 bg-muted/30 hover:bg-muted/50 transition text-left"
-                        >
-                          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            {group.title}
-                          </span>
-                          {isCollapsed ? (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </button>
-                        {!isCollapsed && (
-                          <div className="p-4">
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                              {group.fields.map((f) => (
-                                <div key={f.key} className="space-y-1">
-                                  <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                                    {f.label}
-                                  </Label>
-                                  {renderFieldInput(idx, f, row)}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Add Product button between cards */}
-            <button
-              onClick={() => {
-                setRows((prev) => {
-                  const next = [...prev];
-                  next.splice(idx + 1, 0, blankRow(idx + 2));
-                  return next.map((r, i) => ({ ...r, serial: i + 1 }));
-                });
-              }}
-              className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary/30 py-2.5 text-xs font-semibold text-primary hover:border-primary hover:bg-primary-soft/50 transition"
-            >
-              <Plus className="h-4 w-4" /> Add Product
-            </button>
-          </div>
-        ))}
+      {/* Compact Product List */}
+      <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
+        <div className="overflow-auto max-h-[calc(100vh-220px)]">
+          <table className="w-full border-collapse text-sm">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-muted">
+                <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center border-b border-border w-12">S.No</th>
+                <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-left border-b border-border">Product Name</th>
+                <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-left border-b border-border">Barcode</th>
+                <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-right border-b border-border">Unit Price</th>
+                <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-right border-b border-border">Qty</th>
+                <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-right border-b border-border">Total Price</th>
+                <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-right border-b border-border">Final Cost</th>
+                <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center border-b border-border w-24">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {calculatedRows.map((row, idx) => (
+                <tr key={row._rowId} className="group hover:bg-secondary-soft/30 border-b border-border/50 last:border-0">
+                  <td className="px-3 py-2 text-center text-xs text-muted-foreground font-semibold">{row.serial}</td>
+                  <td className="px-3 py-2 text-xs font-semibold text-foreground">{row.name || <span className="text-muted-foreground italic">No name</span>}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">{row.barcode || "—"}</td>
+                  <td className="px-3 py-2 text-xs text-right text-foreground">₹{(Number(row.unit_price) || 0).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-xs text-right text-foreground">{row.quantity}</td>
+                  <td className="px-3 py-2 text-xs text-right font-semibold text-foreground">₹{(Number(row.total_price) || 0).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-xs text-right font-semibold text-emerald-700">₹{(Number(row.final_purchase_cost) || 0).toFixed(2)}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => editProduct(idx)}
+                        className="rounded p-1 hover:bg-secondary-soft text-primary"
+                        title="Edit product"
+                      >
+                        <Search className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => duplicateRow(idx)}
+                        className="rounded p-1 hover:bg-secondary-soft"
+                        title="Duplicate product"
+                      >
+                        <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                      </button>
+                      <button
+                        onClick={() => deleteRow(idx)}
+                        disabled={calculatedRows.length <= 1}
+                        className="rounded p-1 hover:bg-rose-50 disabled:opacity-30"
+                        title="Delete product"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {calculatedRows.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    No products yet. Click <strong>+ Add Product</strong> to begin.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Grand Totals */}
@@ -956,6 +944,58 @@ function Purchases() {
       >
         <Plus className="h-4 w-4" /> Add Product
       </button>
+
+      {/* Product Entry Dialog Overlay */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-primary">
+              {dialogIdx !== null && calculatedRows[dialogIdx]?.name
+                ? `Edit Product ${String(calculatedRows[dialogIdx].serial).padStart(2, "0")}`
+                : "Add New Product"}
+            </DialogTitle>
+          </DialogHeader>
+          {dialogIdx !== null && calculatedRows[dialogIdx] && (
+            <div className="space-y-4 pt-2">
+              {FIELD_GROUPS.map((group) => {
+                const sectionKey = `dialog-${group.title}`;
+                const isCollapsed = collapsedSections[sectionKey] ?? (group.title !== "Product Details" && group.title !== "Per Packet Unit & Total Unit");
+                return (
+                  <div key={group.title} className="rounded-xl border border-border/50 bg-white/50 overflow-hidden">
+                    <button
+                      onClick={() => toggleSection("dialog", group.title)}
+                      className="w-full flex items-center justify-between px-4 py-2.5 bg-muted/30 hover:bg-muted/50 transition text-left"
+                    >
+                      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        {group.title}
+                      </span>
+                      {isCollapsed ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </button>
+                    {!isCollapsed && (
+                      <div className="p-4">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          {group.fields.map((f) => (
+                            <div key={f.key} className="space-y-1">
+                              <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                                {f.label}
+                              </Label>
+                              {renderFieldInput(dialogIdx, f, calculatedRows[dialogIdx])}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
