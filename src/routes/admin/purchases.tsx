@@ -13,9 +13,13 @@ import {
   X,
   Loader2,
   ImageIcon,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { uploadProductImage } from "@/lib/upload";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/admin/purchases")({
   head: () => ({ meta: [{ title: "Purchase Entry — ACH Admin" }] }),
@@ -73,6 +77,8 @@ type ProductRow = {
   remark: string;
   mrp: number;
   mop: number;
+  packets: number;
+  total_unit: number;
 };
 
 const uid = () =>
@@ -125,6 +131,8 @@ const blankRow = (serial: number): ProductRow => ({
   remark: "",
   mrp: 0,
   mop: 0,
+  packets: 1,
+  total_unit: 0,
 });
 
 const UNITS = ["Nos", "Packet", "Unit", "KG", "G", "L", "ML", "M", "CM", "INC", "DIAM"] as const;
@@ -152,6 +160,10 @@ function calcRow(r: ProductRow): ProductRow {
   const disc = final_purchase_cost * disc_pct / 100;
   const total_final = final_purchase_cost + del_packing + del_charge + gst - disc;
 
+  // Per Packet Unit / Total Unit calculation
+  const packets = Number(r.packets) || 0;
+  const total_unit = qty * packets;
+
   return {
     ...r,
     total_price,
@@ -164,6 +176,7 @@ function calcRow(r: ProductRow): ProductRow {
     gst_amount: Math.round(gst * 100) / 100,
     discount: Math.round(disc * 100) / 100,
     total_final: Math.round(total_final * 100) / 100,
+    total_unit,
   };
 }
 
@@ -178,13 +191,11 @@ const UnitCell = memo(function UnitCell({
   row,
   field,
   options,
-  width,
   idx,
 }: {
   row: ProductRow;
   field: keyof ProductRow;
   options?: readonly string[];
-  width?: string;
   idx: number;
 }) {
   const val = String(row[field] || "");
@@ -197,8 +208,7 @@ const UnitCell = memo(function UnitCell({
         type="text"
         value={val}
         onChange={(e) => _patchRowRef?.(idx, { [field]: e.target.value })}
-        className="h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft"
-        style={{ minWidth: width ?? 80 }}
+        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
         placeholder="e.g. 500 Gram, 1 KG"
       />
     );
@@ -209,8 +219,7 @@ const UnitCell = memo(function UnitCell({
     <select
       value={val}
       onChange={(e) => _patchRowRef?.(idx, { [field]: e.target.value })}
-      className="h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft"
-      style={{ minWidth: width ?? 80 }}
+      className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
     >
       {options?.map((o) => (
         <option key={o} value={o}>{o}</option>
@@ -219,103 +228,9 @@ const UnitCell = memo(function UnitCell({
   );
 });
 
-const Cell = memo(function Cell({
-  row,
-  field,
-  type = "text",
-  options,
-  width,
-  readOnly,
-}: {
-  row: ProductRow;
-  field: keyof ProductRow;
-  type?: string;
-  options?: readonly string[];
-  width?: string;
-  readOnly?: boolean;
-}) {
-  const val = row[field];
-
-  if (options) {
-    return (
-      <select
-        value={String(val)}
-        onChange={(e) => _patchRowRef?.(row.serial - 1, { [field]: e.target.value })}
-        className="h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft"
-        style={{ minWidth: width ?? 80 }}
-      >
-        {options.map((o) => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
-    );
-  }
-
-  if (type === "image") {
-    return (
-      <div className="flex items-center gap-1 px-1">
-        {val ? (
-          <div className="relative">
-            <img src={String(val)} alt="" className="h-7 w-7 rounded object-cover" />
-            <button
-              onClick={() => _patchRowRef?.(row.serial - 1, { image_url: "" })}
-              className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full bg-rose-500 text-white grid place-items-center"
-            >
-              <X className="h-2 w-2" />
-            </button>
-          </div>
-        ) : null}
-        <label className="cursor-pointer text-muted-foreground/60 hover:text-secondary">
-          <input
-            type="file"
-            accept="image/*"
-            className="sr-only"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) _handleImageUploadRef?.(row.serial - 1, f);
-            }}
-          />
-          {_uploadingRef === row._rowId ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <ImageIcon className="h-3.5 w-3.5" />
-          )}
-        </label>
-      </div>
-    );
-  }
-
-  if (readOnly) {
-    return (
-      <input
-        type={type}
-        value={String(val ?? "")}
-        readOnly
-        className={`h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none text-muted-foreground font-semibold ${type === "number" ? "text-right" : ""}`}
-        style={{ minWidth: width ?? 80 }}
-      />
-    );
-  }
-
-  return (
-    <input
-      type={type}
-      defaultValue={String(val ?? "")}
-      onChange={(e) => {
-        const v = type === "number" ? Number(e.target.value) || 0 : e.target.value;
-        _patchRowRef?.(row.serial - 1, { [field]: v });
-      }}
-      className={`h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft ${type === "number" ? "text-right" : ""}`}
-      style={{ minWidth: width ?? 80 }}
-      step={type === "number" ? "0.01" : undefined}
-    />
-  );
-});
-
 // ---------- Component ----------
 function Purchases() {
   const qc = useQueryClient();
-  const tableRef = useRef<HTMLDivElement>(null);
   const [rows, setRows] = useState<ProductRow[]>([blankRow(1)]);
   const [searchQ, setSearchQ] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -438,23 +353,14 @@ function Purchases() {
 
   function addProduct() {
     setRows((prev) => [...prev, blankRow(prev.length + 1)]);
-    // Focus the new row's Product Name field after render
+    // Scroll to the new card after render
     setTimeout(() => {
-      const table = tableRef.current;
-      if (!table) return;
-      const rows = table.querySelectorAll("tbody tr");
-      const lastRow = rows[rows.length - 1];
-      if (lastRow) {
-        const inputs = lastRow.querySelectorAll("input");
-        // Product Name is column index 7 (0-based)
-        for (const inp of inputs) {
-          if (inp.getAttribute("type") === "text" && !inp.readOnly) {
-            inp.focus();
-            break;
-          }
-        }
+      const cards = document.querySelectorAll("[data-product-card]");
+      const lastCard = cards[cards.length - 1];
+      if (lastCard) {
+        lastCard.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-    }, 50);
+    }, 100);
   }
 
   function duplicateRow(idx: number) {
@@ -605,62 +511,109 @@ function Purchases() {
     e.target.value = "";
   }
 
-  // Column definitions
-  const COLS = [
-    { key: "serial", label: "S.No", w: 45, type: "text", ro: true },
-    { key: "barcode", label: "Barcode", w: 100, type: "text" },
-    { key: "supplier_name", label: "Supplier Name", w: 130, type: "select-supplier" },
-    { key: "supplier_bill_no", label: "Supplier Bill No", w: 110, type: "text" },
-    { key: "category_id", label: "Category", w: 120, type: "select-category" },
-    { key: "image_url", label: "Image", w: 60, type: "image" },
-    { key: "date", label: "Date", w: 110, type: "date" },
-    { key: "name", label: "Product Name", w: 150, type: "text" },
-    { key: "material", label: "Material", w: 100, type: "text" },
-    { key: "colour", label: "Colour", w: 90, type: "text" },
-    { key: "per_packet_unit", label: "Unit", w: 80, type: "select-unit" },
-    { key: "quantity", label: "Qty", w: 65, type: "number" },
-    { key: "unit_price", label: "Unit Price", w: 85, type: "number" },
-    { key: "total_price", label: "Total Price", w: 85, type: "number", ro: true },
-    { key: "purchase_packing_charge", label: "Packing Charge", w: 100, type: "number" },
-    { key: "purchase_freight_charges", label: "Freight Charges", w: 100, type: "number" },
-    { key: "other_charges", label: "Other Charges", w: 90, type: "number" },
-    { key: "total_unit_cost", label: "Total Unit Cost", w: 100, type: "number", ro: true },
-    { key: "final_purchase_cost", label: "Final Cost", w: 110, type: "number", ro: true },
-    { key: "retail_selling_price", label: "Retail Price", w: 90, type: "number" },
-    { key: "wholesale_price", label: "Wholesale Price", w: 95, type: "number" },
-    { key: "profit_per_piece_pct", label: "Profit %", w: 70, type: "number", ro: true },
-    { key: "pieces_sold", label: "Pieces Sold", w: 80, type: "number" },
-    { key: "sold_for", label: "Sold For", w: 80, type: "number" },
-    { key: "total_sold", label: "Total Sold", w: 80, type: "number", ro: true },
-    { key: "minimum_stock", label: "Min Stock", w: 75, type: "number" },
-    { key: "current_stock", label: "Current Stock", w: 80, type: "number" },
-    { key: "rack_location", label: "Rack Location", w: 95, type: "text" },
-    { key: "delivery_packing_rate", label: "Del Pack %", w: 90, type: "number" },
-    { key: "delivery_packing_charge", label: "Del Pack Amt", w: 90, type: "number", ro: true },
-    { key: "delivery_charge_rate", label: "Del Chg %", w: 90, type: "number" },
-    { key: "delivery_charge", label: "Del Chg Amt", w: 90, type: "number", ro: true },
-    { key: "re_stock", label: "Re Stock", w: 75, type: "number" },
-    { key: "gst_rate", label: "GST %", w: 70, type: "number" },
-    { key: "gst_amount", label: "GST Amt", w: 75, type: "number", ro: true },
-    { key: "discount_rate", label: "Disc %", w: 80, type: "number" },
-    { key: "discount", label: "Disc Amt", w: 80, type: "number", ro: true },
-    { key: "total_final", label: "Total", w: 85, type: "number", ro: true },
-    { key: "cash_received_by", label: "Payment", w: 90, type: "select-payment" },
-    { key: "remark", label: "Remark", w: 100, type: "text" },
-    { key: "mrp", label: "MRP", w: 80, type: "number" },
-    { key: "mop", label: "MOP", w: 80, type: "number" },
+  // Field layout definitions for each Product Entry Card
+  const FIELD_GROUPS = [
+    {
+      title: "Product Details",
+      fields: [
+        { key: "serial", label: "Serial No.", type: "text", ro: true },
+        { key: "name", label: "Product Name", type: "text" },
+        { key: "barcode", label: "Barcode", type: "text" },
+        { key: "image_url", label: "Image", type: "image" },
+        { key: "date", label: "Date", type: "date" },
+        { key: "category_id", label: "Category", type: "select-category" },
+        { key: "supplier_name", label: "Supplier Name", type: "select-supplier" },
+        { key: "supplier_bill_no", label: "Supplier Bill No", type: "text" },
+      ],
+    },
+    {
+      title: "Pricing",
+      fields: [
+        { key: "unit_price", label: "Unit Price", type: "number" },
+        { key: "total_price", label: "Total Price", type: "number", ro: true },
+        { key: "retail_selling_price", label: "Retail Price", type: "number" },
+        { key: "wholesale_price", label: "Wholesale Price", type: "number" },
+        { key: "mrp", label: "MRP", type: "number" },
+        { key: "mop", label: "MOP", type: "number" },
+        { key: "profit_per_piece_pct", label: "Profit %", type: "number", ro: true },
+      ],
+    },
+    {
+      title: "Per Packet Unit & Total Unit",
+      fields: [
+        { key: "per_packet_unit", label: "Per Packet Unit", type: "select-unit" },
+        { key: "quantity", label: "Quantity (Per Packet)", type: "number" },
+        { key: "packets", label: "Number of Packets", type: "number" },
+        { key: "total_unit", label: "Total Unit", type: "number", ro: true },
+      ],
+    },
+    {
+      title: "Charges & Cost",
+      fields: [
+        { key: "purchase_packing_charge", label: "Packing Charge", type: "number" },
+        { key: "purchase_freight_charges", label: "Freight Charges", type: "number" },
+        { key: "other_charges", label: "Other Charges", type: "number" },
+        { key: "total_unit_cost", label: "Total Unit Cost", type: "number", ro: true },
+        { key: "final_purchase_cost", label: "Final Purchase Cost", type: "number", ro: true },
+      ],
+    },
+    {
+      title: "Delivery & Tax",
+      fields: [
+        { key: "delivery_packing_rate", label: "Del Packing %", type: "number" },
+        { key: "delivery_packing_charge", label: "Del Packing Amt", type: "number", ro: true },
+        { key: "delivery_charge_rate", label: "Del Charge %", type: "number" },
+        { key: "delivery_charge", label: "Del Charge Amt", type: "number", ro: true },
+        { key: "gst_rate", label: "GST %", type: "number" },
+        { key: "gst_amount", label: "GST Amt", type: "number", ro: true },
+        { key: "discount_rate", label: "Discount %", type: "number" },
+        { key: "discount", label: "Discount Amt", type: "number", ro: true },
+        { key: "total_final", label: "Total Final", type: "number", ro: true },
+      ],
+    },
+    {
+      title: "Stock & Sales",
+      fields: [
+        { key: "minimum_stock", label: "Min Stock", type: "number" },
+        { key: "current_stock", label: "Current Stock", type: "number" },
+        { key: "rack_location", label: "Rack Location", type: "text" },
+        { key: "re_stock", label: "Re Stock", type: "number" },
+        { key: "pieces_sold", label: "Pieces Sold", type: "number" },
+        { key: "sold_for", label: "Sold For", type: "number" },
+        { key: "total_sold", label: "Total Sold", type: "number", ro: true },
+      ],
+    },
+    {
+      title: "Other",
+      fields: [
+        { key: "material", label: "Material", type: "text" },
+        { key: "colour", label: "Colour", type: "text" },
+        { key: "cash_received_by", label: "Payment", type: "select-payment" },
+        { key: "remark", label: "Remark", type: "text" },
+      ],
+    },
   ];
 
-  function renderCell(idx: number, col: (typeof COLS)[number], row: ProductRow) {
-    const field = col.key as keyof ProductRow;
-    switch (col.type) {
+  // Collapsible section state
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const toggleSection = (cardId: string, sectionTitle: string) => {
+    const key = `${cardId}-${sectionTitle}`;
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  function renderFieldInput(
+    idx: number,
+    fieldDef: { key: string; label: string; type: string; ro?: boolean },
+    row: ProductRow
+  ) {
+    const field = fieldDef.key as keyof ProductRow;
+    switch (fieldDef.type) {
       case "select-supplier":
         return (
           <select
             value={String(row[field])}
             onChange={(e) => patchRow(idx, { [field]: e.target.value })}
-            className="h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft"
-            style={{ minWidth: col.w }}
+            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           >
             <option value="">— select —</option>
             {(suppliers ?? []).map((s) => (
@@ -673,8 +626,7 @@ function Purchases() {
           <select
             value={String(row[field])}
             onChange={(e) => patchRow(idx, { [field]: e.target.value })}
-            className="h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft"
-            style={{ minWidth: col.w }}
+            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           >
             <option value="">— select —</option>
             {(categories ?? []).map((c) => (
@@ -688,20 +640,104 @@ function Purchases() {
             row={row}
             field={field}
             options={UNITS}
-            width={col.w}
             idx={idx}
           />
         );
       case "select-payment":
-        return <Cell row={row} field={field} options={PAYMENT_METHODS} width={col.w} />;
+        return (
+          <select
+            value={String(row[field])}
+            onChange={(e) => patchRow(idx, { [field]: e.target.value })}
+            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          >
+            {PAYMENT_METHODS.map((o) => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </select>
+        );
       case "image":
-        return <Cell row={row} field={field} type="image" />;
+        return (
+          <div className="flex items-center gap-2">
+            {row[field] ? (
+              <div className="relative">
+                <img src={String(row[field])} alt="" className="h-12 w-12 rounded-lg object-cover border border-border" />
+                <button
+                  onClick={() => patchRow(idx, { image_url: "" })}
+                  className="absolute -right-1.5 -top-1.5 h-5 w-5 rounded-full bg-rose-500 text-white grid place-items-center shadow"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ) : null}
+            <label className="cursor-pointer text-muted-foreground/60 hover:text-primary transition">
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) _handleImageUploadRef?.(idx, f);
+                }}
+              />
+              {_uploadingRef === row._rowId ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <ImageIcon className="h-5 w-5" />
+              )}
+            </label>
+          </div>
+        );
       case "date":
-        return <Cell row={row} field={field} type="date" width={col.w} />;
+        return (
+          <input
+            type="date"
+            value={String(row[field] ?? "")}
+            onChange={(e) => patchRow(idx, { [field]: e.target.value })}
+            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          />
+        );
       case "number":
-        return <Cell row={row} field={field} type="number" width={col.w} readOnly={col.ro} />;
+        if (fieldDef.ro) {
+          return (
+            <input
+              type="number"
+              value={String(row[field] ?? "")}
+              readOnly
+              className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm font-semibold text-right outline-none cursor-default"
+            />
+          );
+        }
+        return (
+          <input
+            type="number"
+            defaultValue={String(row[field] ?? "")}
+            onChange={(e) => {
+              const v = Number(e.target.value) || 0;
+              patchRow(idx, { [field]: v });
+            }}
+            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
+            step="0.01"
+          />
+        );
       default:
-        return <Cell row={row} field={field} width={col.w} readOnly={col.ro} />;
+        if (fieldDef.ro) {
+          return (
+            <input
+              type="text"
+              value={String(row[field] ?? "")}
+              readOnly
+              className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm font-semibold outline-none cursor-default"
+            />
+          );
+        }
+        return (
+          <input
+            type="text"
+            defaultValue={String(row[field] ?? "")}
+            onChange={(e) => patchRow(idx, { [field]: e.target.value })}
+            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          />
+        );
     }
   }
 
@@ -799,95 +835,126 @@ function Purchases() {
         </div>
       )}
 
-      {/* Excel-style table */}
-      <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
-        <div ref={tableRef} className="overflow-auto max-h-[calc(100vh-220px)]">
-          <table className="border-collapse" style={{ minWidth: COLS.reduce((s, c) => s + c.w, 0) }}>
-            <thead className="sticky top-0 z-20">
-              <tr>
-                {COLS.map((col) => (
-                  <th
-                    key={col.key}
-                    className="bg-muted text-[10px] font-bold uppercase tracking-wider text-muted-foreground border border-border px-1 py-2 text-center whitespace-nowrap"
-                    style={{ minWidth: col.w, maxWidth: col.w }}
+      {/* Product Entry Cards */}
+      <div className="space-y-4">
+        {calculatedRows.map((row, idx) => (
+          <div key={row._rowId} className="space-y-3">
+            {/* Product Entry Card */}
+            <Card data-product-card className="shadow-card border-border/60">
+              <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-base font-bold text-primary">
+                  Product Entry {String(row.serial).padStart(2, "0")}
+                </CardTitle>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => duplicateRow(idx)}
+                    className="rounded-lg p-1.5 hover:bg-secondary-soft transition"
+                    title="Duplicate product"
                   >
-                    {col.label}
-                  </th>
-                ))}
-                <th className="bg-muted text-[10px] font-bold uppercase tracking-wider text-muted-foreground border border-border px-1 py-2 w-20">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {calculatedRows.map((row, idx) => (
-                <tr key={row._rowId} className="group hover:bg-secondary-soft/30">
-                  {COLS.map((col) => (
-                    <td
-                      key={col.key}
-                      className="border border-border p-0 h-8"
-                      style={{ minWidth: col.w, maxWidth: col.w + 20 }}
-                    >
-                      {renderCell(idx, col, row)}
-                    </td>
-                  ))}
-                  <td className="border border-border p-1 h-8 w-20">
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => duplicateRow(idx)}
-                        className="rounded p-1 hover:bg-secondary-soft"
-                        title="Duplicate row"
-                      >
-                        <Copy className="h-3 w-3 text-muted-foreground" />
-                      </button>
-                      <button
-                        onClick={() => deleteRow(idx)}
-                        disabled={calculatedRows.length <= 1}
-                        className="rounded p-1 hover:bg-rose-50 disabled:opacity-30"
-                        title="Delete row"
-                      >
-                        <Trash2 className="h-3 w-3 text-rose-600" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-muted font-bold">
-                <td colSpan={13} className="border border-border px-2 py-1.5 text-[11px] text-right text-muted-foreground">
-                  GRAND TOTALS:
-                </td>
-                <td className="border border-border px-1.5 py-1.5 text-[11px] text-right">
-                  ₹{grandTotals.total_price.toFixed(2)}
-                </td>
-                <td colSpan={3} className="border border-border px-1.5 py-1.5 text-[11px] text-right">—</td>
-                <td className="border border-border px-1.5 py-1.5 text-[11px] text-right">
-                  ₹{grandTotals.final_purchase_cost.toFixed(2)}
-                </td>
-                <td colSpan={14} className="border border-border px-1.5 py-1.5 text-[11px] text-right">—</td>
-                <td className="border border-border px-1.5 py-1.5 text-[11px] text-right text-emerald-700">
-                  ₹{grandTotals.total_final.toFixed(2)}
-                </td>
-                <td className="border border-border px-1.5 py-1.5 text-[11px] text-right">
-                  GST: ₹{grandTotals.gst.toFixed(2)}
-                </td>
-                <td className="border border-border px-1.5 py-1.5 text-[11px] text-right">
-                  Disc: ₹{grandTotals.discount.toFixed(2)}
-                </td>
-                <td className="border border-border"></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+                    <Copy className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                  <button
+                    onClick={() => deleteRow(idx)}
+                    disabled={calculatedRows.length <= 1}
+                    className="rounded-lg p-1.5 hover:bg-rose-50 disabled:opacity-30 transition"
+                    title="Delete product"
+                  >
+                    <Trash2 className="h-4 w-4 text-rose-600" />
+                  </button>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-4">
+                  {FIELD_GROUPS.map((group) => {
+                    const sectionKey = `${row._rowId}-${group.title}`;
+                    const isCollapsed = collapsedSections[sectionKey] ?? (group.title !== "Product Details" && group.title !== "Per Packet Unit & Total Unit");
+                    return (
+                      <div key={group.title} className="rounded-xl border border-border/50 bg-white/50 overflow-hidden">
+                        <button
+                          onClick={() => toggleSection(row._rowId, group.title)}
+                          className="w-full flex items-center justify-between px-4 py-2.5 bg-muted/30 hover:bg-muted/50 transition text-left"
+                        >
+                          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            {group.title}
+                          </span>
+                          {isCollapsed ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </button>
+                        {!isCollapsed && (
+                          <div className="p-4">
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                              {group.fields.map((f) => (
+                                <div key={f.key} className="space-y-1">
+                                  <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                                    {f.label}
+                                  </Label>
+                                  {renderFieldInput(idx, f, row)}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Add Product button between cards */}
+            <button
+              onClick={() => {
+                setRows((prev) => {
+                  const next = [...prev];
+                  next.splice(idx + 1, 0, blankRow(idx + 2));
+                  return next.map((r, i) => ({ ...r, serial: i + 1 }));
+                });
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary/30 py-2.5 text-xs font-semibold text-primary hover:border-primary hover:bg-primary-soft/50 transition"
+            >
+              <Plus className="h-4 w-4" /> Add Product
+            </button>
+          </div>
+        ))}
       </div>
 
-      {/* Quick add row button at bottom */}
+      {/* Grand Totals */}
+      <Card className="shadow-card border-border/60">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="space-y-1">
+              <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Price</Label>
+              <div className="text-lg font-bold text-foreground">₹{grandTotals.total_price.toFixed(2)}</div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Final Purchase Cost</Label>
+              <div className="text-lg font-bold text-foreground">₹{grandTotals.final_purchase_cost.toFixed(2)}</div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Final</Label>
+              <div className="text-lg font-bold text-emerald-700">₹{grandTotals.total_final.toFixed(2)}</div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">GST</Label>
+              <div className="text-lg font-bold text-foreground">₹{grandTotals.gst.toFixed(2)}</div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Discount</Label>
+              <div className="text-lg font-bold text-foreground">₹{grandTotals.discount.toFixed(2)}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bottom Add Product button */}
       <button
         onClick={addProduct}
-        className="w-full rounded-xl border-2 border-dashed border-border py-3 text-xs font-semibold text-muted-foreground hover:border-secondary hover:text-secondary transition"
+        className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary/30 py-3 text-xs font-semibold text-primary hover:border-primary hover:bg-primary-soft/50 transition"
       >
-        <Plus className="inline h-3.5 w-3.5 mr-1" /> Add new product row
+        <Plus className="h-4 w-4" /> Add Product
       </button>
     </div>
   );
