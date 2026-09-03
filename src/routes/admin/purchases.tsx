@@ -41,7 +41,9 @@ type ProductRow = {
   material: string;
   colour: string;
   per_packet_unit: string;
+  per_packet_value: number;
   total_unit: number;
+  total_unit_type: string;
   quantity: number;
   unit_price: number;
   total_price: number;
@@ -91,7 +93,9 @@ const blankRow = (serial: number): ProductRow => ({
   material: "",
   colour: "",
   per_packet_unit: "Nos",
+  per_packet_value: 0,
   total_unit: 0,
+  total_unit_type: "Nos",
   quantity: 1,
   unit_price: 0,
   total_price: 0,
@@ -122,12 +126,18 @@ const blankRow = (serial: number): ProductRow => ({
   mop: 0,
 });
 
-const UNITS = ["Nos", "Packet", "Unit", "KG", "G", "L", "ML", "M", "CM", "INC", "DIAM"] as const;
+const UNITS = ["Nos", "Packet", "Unit", "Kilogram", "Gram", "Liter", "ML", "Meter", "Centimeter", "Inch", "DIAM"] as const;
 const PAYMENT_METHODS = ["UPI", "CASH", "GPAY", "CARD"] as const;
 
 // ---------- Calculated fields ----------
 function calcRow(r: ProductRow): ProductRow {
-  const qty = Number(r.quantity) || 0;
+  // Auto-calculate quantity from Total Unit / Per Packet Value when units match and values exist
+  let qty = Number(r.quantity) || 0;
+  const ppv = Number(r.per_packet_value) || 0;
+  const tu = Number(r.total_unit) || 0;
+  if (ppv > 0 && tu > 0 && r.per_packet_unit === r.total_unit_type && r.total_unit_type !== "Nos") {
+    qty = Math.round((tu / ppv) * 100) / 100;
+  }
   const up = Number(r.unit_price) || 0;
   const total_price = qty * up;
   const total_unit_cost = up + Number(r.purchase_packing_charge) + Number(r.purchase_freight_charges) + Number(r.other_charges);
@@ -144,6 +154,7 @@ function calcRow(r: ProductRow): ProductRow {
 
   return {
     ...r,
+    quantity: qty,
     total_price,
     total_unit_cost,
     final_purchase_cost,
@@ -404,7 +415,7 @@ function Purchases() {
   function exportCSV() {
     const headers = [
       "S.No", "Barcode", "Supplier Name", "Supplier Bill No", "Category", "Date",
-      "Product Name", "Material", "Colour", "Unit", "Total Unit", "Qty", "Unit Price", "Total Price",
+      "Product Name", "Material", "Colour", "Per Packet Value", "Per Packet Unit", "Total Unit", "Total Unit Type", "Qty", "Unit Price", "Total Price",
       "Packing Charge", "Freight Charges", "Other Charges", "Total Unit Cost",
       "Final Purchase Cost", "Retail Selling Price", "Wholesale Price", "Profit %",
       "Pieces Sold", "Sold For", "Total Sold", "Min Stock", "Current Stock",
@@ -414,7 +425,7 @@ function Purchases() {
     ];
     const csvRows = calculatedRows.map((r) => [
       r.serial, r.barcode, r.supplier_name, r.supplier_bill_no, r.category_id, r.date,
-      r.name, r.material, r.colour, r.per_packet_unit, r.total_unit, r.quantity, r.unit_price,
+      r.name, r.material, r.colour, r.per_packet_value, r.per_packet_unit, r.total_unit, r.total_unit_type, r.quantity, r.unit_price,
       r.total_price, r.purchase_packing_charge, r.purchase_freight_charges,
       r.other_charges, r.total_unit_cost, r.final_purchase_cost, r.retail_selling_price,
       r.wholesale_price, r.profit_per_piece_pct, r.pieces_sold, r.sold_for,
@@ -484,7 +495,7 @@ function Purchases() {
   }
 
   // 38-field form definitions in exact user-specified sequence
-  const FORM_FIELDS: { key: string; label: string; type: string; ro?: boolean }[] = [
+  const FORM_FIELDS: { key: string; label: string; type: string; ro?: boolean; unitField?: string }[] = [
     { key: "barcode", label: "Barcode", type: "text" },
     { key: "supplier_name", label: "Supplier Name", type: "select-supplier" },
     { key: "supplier_bill_no", label: "Supplier Bill Number", type: "text" },
@@ -494,8 +505,8 @@ function Purchases() {
     { key: "name", label: "Product Name", type: "text" },
     { key: "material", label: "Material", type: "text" },
     { key: "colour", label: "Colour", type: "text" },
-    { key: "per_packet_unit", label: "Per Packet Unit (CM/KG/ML/M/INC/DIAM)", type: "select-unit" },
-    { key: "total_unit", label: "Total Unit", type: "number" },
+    { key: "per_packet_value", label: "Per Packet Value", type: "unit-pair", unitField: "per_packet_unit" },
+    { key: "total_unit", label: "Total Unit", type: "unit-pair", unitField: "total_unit_type" },
     { key: "quantity", label: "Quantity", type: "number" },
     { key: "unit_price", label: "Unit Price", type: "number" },
     { key: "total_price", label: "Total Price", type: "number", ro: true },
@@ -528,7 +539,7 @@ function Purchases() {
 
   function renderFieldInput(
     idx: number,
-    fieldDef: { key: string; label: string; type: string; ro?: boolean },
+    fieldDef: { key: string; label: string; type: string; ro?: boolean; unitField?: string },
     row: ProductRow
   ) {
     const field = fieldDef.key as keyof ProductRow;
@@ -563,6 +574,33 @@ function Purchases() {
         return (
           <UnitCell row={row} field={field} options={UNITS} idx={idx} />
         );
+      case "unit-pair": {
+        const unitField = fieldDef.unitField as keyof ProductRow;
+        return (
+          <div className="flex gap-2">
+            <input
+              type="number"
+              defaultValue={String(row[field] ?? "")}
+              onChange={(e) => {
+                const v = Number(e.target.value) || 0;
+                patchRow(idx, { [field]: v });
+              }}
+              className="flex-1 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
+              step="0.01"
+              placeholder="Value"
+            />
+            <select
+              value={String(row[unitField] || "Nos")}
+              onChange={(e) => patchRow(idx, { [unitField]: e.target.value })}
+              className="w-28 rounded-lg border border-border bg-white px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            >
+              {UNITS.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </div>
+        );
+      }
       case "select-payment":
         return (
           <select
