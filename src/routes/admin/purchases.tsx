@@ -59,10 +59,14 @@ type ProductRow = {
   minimum_stock: number;
   current_stock: number;
   rack_location: string;
+  delivery_packing_rate: number;
   delivery_packing_charge: number;
+  delivery_charge_rate: number;
   delivery_charge: number;
   re_stock: number;
+  gst_rate: number;
   gst_amount: number;
+  discount_rate: number;
   discount: number;
   total_final: number;
   cash_received_by: string;
@@ -107,10 +111,14 @@ const blankRow = (serial: number): ProductRow => ({
   minimum_stock: 5,
   current_stock: 0,
   rack_location: "",
+  delivery_packing_rate: 0,
   delivery_packing_charge: 0,
+  delivery_charge_rate: 0,
   delivery_charge: 0,
   re_stock: 0,
+  gst_rate: 0,
   gst_amount: 0,
+  discount_rate: 0,
   discount: 0,
   total_final: 0,
   cash_received_by: "",
@@ -119,7 +127,7 @@ const blankRow = (serial: number): ProductRow => ({
   mop: 0,
 });
 
-const UNITS = ["Nos", "KG", "G", "L", "ML", "M", "CM", "INC", "DIAM"] as const;
+const UNITS = ["Nos", "Packet", "Unit", "KG", "G", "L", "ML", "M", "CM", "INC", "DIAM"] as const;
 const PAYMENT_METHODS = ["UPI", "CASH", "GPAY", "CARD"] as const;
 
 // ---------- Calculated fields ----------
@@ -134,10 +142,14 @@ function calcRow(r: ProductRow): ProductRow {
   const pieces = Number(r.pieces_sold) || 0;
   const sold_for_val = Number(r.sold_for) || 0;
   const total_sold = pieces * sold_for_val;
-  const del_packing = final_purchase_cost * 0.02;
-  const del_charge = final_purchase_cost * 0.05;
-  const gst = final_purchase_cost * 0.05;
-  const disc = final_purchase_cost * 0.02;
+  const del_packing_pct = Math.min(Math.max(Number(r.delivery_packing_rate) || 0, 0), 100);
+  const del_charge_pct = Math.min(Math.max(Number(r.delivery_charge_rate) || 0, 0), 100);
+  const gst_pct = Math.min(Math.max(Number(r.gst_rate) || 0, 0), 100);
+  const disc_pct = Math.min(Math.max(Number(r.discount_rate) || 0, 0), 100);
+  const del_packing = final_purchase_cost * del_packing_pct / 100;
+  const del_charge = final_purchase_cost * del_charge_pct / 100;
+  const gst = final_purchase_cost * gst_pct / 100;
+  const disc = final_purchase_cost * disc_pct / 100;
   const total_final = final_purchase_cost + del_packing + del_charge + gst - disc;
 
   return {
@@ -228,18 +240,27 @@ const Cell = memo(function Cell({
     );
   }
 
+  if (readOnly) {
+    return (
+      <input
+        type={type}
+        value={String(val ?? "")}
+        readOnly
+        className={`h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none text-muted-foreground font-semibold ${type === "number" ? "text-right" : ""}`}
+        style={{ minWidth: width ?? 80 }}
+      />
+    );
+  }
+
   return (
     <input
       type={type}
       defaultValue={String(val ?? "")}
-      readOnly={readOnly}
       onChange={(e) => {
         const v = type === "number" ? Number(e.target.value) || 0 : e.target.value;
         _patchRowRef?.(row.serial - 1, { [field]: v });
       }}
-      className={`h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none ${
-        readOnly ? "text-muted-foreground font-semibold" : "focus:bg-secondary-soft"
-      } ${type === "number" ? "text-right" : ""}`}
+      className={`h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft ${type === "number" ? "text-right" : ""}`}
       style={{ minWidth: width ?? 80 }}
       step={type === "number" ? "0.01" : undefined}
     />
@@ -465,8 +486,9 @@ function Purchases() {
       "Packing Charge", "Freight Charges", "Other Charges", "Total Unit Cost",
       "Final Purchase Cost", "Retail Selling Price", "Wholesale Price", "Profit %",
       "Pieces Sold", "Sold For", "Total Sold", "Min Stock", "Current Stock",
-      "Rack Location", "Del Packing 2%", "Del Charge 5%", "Re Stock", "GST 5%",
-      "Discount 2%", "Total", "Payment", "Remark", "MRP", "MOP",
+      "Rack Location", "Del Packing %", "Del Packing Amt", "Del Charge %", "Del Charge Amt",
+      "Re Stock", "GST %", "GST Amt", "Discount %", "Discount Amt", "Total",
+      "Payment", "Remark", "MRP", "MOP",
     ];
     const csvRows = calculatedRows.map((r) => [
       r.serial, r.barcode, r.supplier_name, r.supplier_bill_no, r.category_id, r.date,
@@ -568,11 +590,15 @@ function Purchases() {
     { key: "minimum_stock", label: "Min Stock", w: 75, type: "number" },
     { key: "current_stock", label: "Current Stock", w: 80, type: "number" },
     { key: "rack_location", label: "Rack Location", w: 95, type: "text" },
-    { key: "delivery_packing_charge", label: "Del Packing 2%", w: 95, type: "number", ro: true },
-    { key: "delivery_charge", label: "Del Charge 5%", w: 95, type: "number", ro: true },
+    { key: "delivery_packing_rate", label: "Del Packing %", w: 85, type: "number" },
+    { key: "delivery_packing_charge", label: "Del Packing Amt", w: 85, type: "number", ro: true },
+    { key: "delivery_charge_rate", label: "Del Charge %", w: 85, type: "number" },
+    { key: "delivery_charge", label: "Del Charge Amt", w: 85, type: "number", ro: true },
     { key: "re_stock", label: "Re Stock", w: 75, type: "number" },
-    { key: "gst_amount", label: "GST 5%", w: 75, type: "number", ro: true },
-    { key: "discount", label: "Discount 2%", w: 85, type: "number", ro: true },
+    { key: "gst_rate", label: "GST %", w: 70, type: "number" },
+    { key: "gst_amount", label: "GST Amt", w: 75, type: "number", ro: true },
+    { key: "discount_rate", label: "Discount %", w: 80, type: "number" },
+    { key: "discount", label: "Discount Amt", w: 85, type: "number", ro: true },
     { key: "total_final", label: "Total", w: 85, type: "number", ro: true },
     { key: "cash_received_by", label: "Payment", w: 90, type: "select-payment" },
     { key: "remark", label: "Remark", w: 100, type: "text" },
