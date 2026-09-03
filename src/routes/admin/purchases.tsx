@@ -174,6 +174,51 @@ let _patchRowRef: ((idx: number, patch: Partial<ProductRow>) => void) | null = n
 let _handleImageUploadRef: ((idx: number, file: File) => void) | null = null;
 let _uploadingRef: string | null = null;
 
+const UnitCell = memo(function UnitCell({
+  row,
+  field,
+  options,
+  width,
+  idx,
+}: {
+  row: ProductRow;
+  field: keyof ProductRow;
+  options?: readonly string[];
+  width?: string;
+  idx: number;
+}) {
+  const val = String(row[field] || "");
+
+  // If the value is "Packet" or starts with "Packet" followed by a space (manual entry mode)
+  // show a text input for manual entry
+  if (val === "Packet" || val.startsWith("Packet ")) {
+    return (
+      <input
+        type="text"
+        value={val}
+        onChange={(e) => _patchRowRef?.(idx, { [field]: e.target.value })}
+        className="h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft"
+        style={{ minWidth: width ?? 80 }}
+        placeholder="e.g. 500 Gram, 1 KG"
+      />
+    );
+  }
+
+  // Otherwise, show the dropdown
+  return (
+    <select
+      value={val}
+      onChange={(e) => _patchRowRef?.(idx, { [field]: e.target.value })}
+      className="h-full w-full border-0 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:bg-secondary-soft"
+      style={{ minWidth: width ?? 80 }}
+    >
+      {options?.map((o) => (
+        <option key={o} value={o}>{o}</option>
+      ))}
+    </select>
+  );
+});
+
 const Cell = memo(function Cell({
   row,
   field,
@@ -638,7 +683,15 @@ function Purchases() {
           </select>
         );
       case "select-unit":
-        return <Cell row={row} field={field} options={UNITS} width={col.w} />;
+        return (
+          <UnitCell
+            row={row}
+            field={field}
+            options={UNITS}
+            width={col.w}
+            idx={idx}
+          />
+        );
       case "select-payment":
         return <Cell row={row} field={field} options={PAYMENT_METHODS} width={col.w} />;
       case "image":
