@@ -206,6 +206,153 @@ const UnitCell = memo(function UnitCell({
   );
 });
 
+// ---------- Supplier Combobox ----------
+const SupplierCombobox = memo(function SupplierCombobox({
+  value,
+  onChange,
+  suppliers,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  suppliers: { id: string; name: string }[];
+}) {
+  const [inputVal, setInputVal] = useState(value || "");
+  const [open, setOpen] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Sync external value changes
+  useEffect(() => { setInputVal(value || ""); }, [value]);
+
+  const filtered = useMemo(() => {
+    if (!inputVal.trim()) return suppliers ?? [];
+    const q = inputVal.toLowerCase();
+    return (suppliers ?? []).filter((s) => s.name?.toLowerCase().includes(q));
+  }, [inputVal, suppliers]);
+
+  const trimmedInput = inputVal.trim();
+  const isNew = trimmedInput.length > 0 && !(suppliers ?? []).some(
+    (s) => s.name?.toLowerCase() === trimmedInput.toLowerCase()
+  );
+
+  function select(name: string) {
+    setInputVal(name);
+    onChange(name);
+    setOpen(false);
+    setHighlightIdx(-1);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!open) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+    const totalItems = filtered.length + (isNew ? 1 : 0);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIdx((i) => (i + 1) % totalItems);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIdx((i) => (i - 1 + totalItems) % totalItems);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightIdx >= 0 && highlightIdx < filtered.length) {
+        select(filtered[highlightIdx].name);
+      } else if (isNew && highlightIdx === filtered.length) {
+        select(trimmedInput);
+      } else if (filtered.length === 1) {
+        select(filtered[0].name);
+      } else if (isNew) {
+        select(trimmedInput);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setHighlightIdx(-1);
+    }
+  }
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <input
+        ref={inputRef}
+        type="text"
+        value={inputVal}
+        onChange={(e) => {
+          setInputVal(e.target.value);
+          setHighlightIdx(-1);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        placeholder="Type to search supplier…"
+        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        autoComplete="off"
+      />
+      {open && (
+        <div
+          ref={listRef}
+          className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-48 overflow-y-auto"
+        >
+          {filtered.length === 0 && !isNew && (
+            <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
+              No suppliers found
+            </div>
+          )}
+          {filtered.map((s, i) => (
+            <button
+              key={s.id}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                select(s.name);
+              }}
+              onMouseEnter={() => setHighlightIdx(i)}
+              className={`w-full text-left px-3 py-2 text-sm transition ${
+                highlightIdx === i ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"
+              }`}
+            >
+              {s.name}
+            </button>
+          ))}
+          {isNew && (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                select(trimmedInput);
+              }}
+              onMouseEnter={() => setHighlightIdx(filtered.length)}
+              className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${
+                highlightIdx === filtered.length ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"
+              }`}
+            >
+              <span className="text-muted-foreground">Add new: </span>
+              <span className="font-semibold">{trimmedInput}</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 // ---------- Component ----------
 function Purchases() {
   const qc = useQueryClient();
@@ -368,6 +515,24 @@ function Purchases() {
     if (!row.name.trim()) return toast.error("Product name is required");
     setSaving(true);
     try {
+      // Auto-create supplier if it's a new name
+      if (row.supplier_name?.trim()) {
+        const { data: existingSuppliers } = await supabase
+          .from("suppliers")
+          .select("id")
+          .ilike("name", row.supplier_name.trim());
+        if (!existingSuppliers?.length) {
+          const { error: supErr } = await supabase
+            .from("suppliers")
+            .insert({ name: row.supplier_name.trim() });
+          if (supErr) {
+            console.error("Failed to add supplier:", supErr);
+          } else {
+            qc.invalidateQueries({ queryKey: ["suppliers-lite"] });
+          }
+        }
+      }
+
       const slug = row.name
         .toLowerCase()
         .replace(/\s+/g, "-")
@@ -546,16 +711,11 @@ function Purchases() {
     switch (fieldDef.type) {
       case "select-supplier":
         return (
-          <select
-            value={String(row[field])}
-            onChange={(e) => patchRow(idx, { [field]: e.target.value })}
-            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-          >
-            <option value="">— select —</option>
-            {(suppliers ?? []).map((s) => (
-              <option key={s.id} value={s.name}>{s.name}</option>
-            ))}
-          </select>
+          <SupplierCombobox
+            value={String(row[field] || "")}
+            onChange={(val) => patchRow(idx, { supplier_name: val })}
+            suppliers={suppliers ?? []}
+          />
         );
       case "select-category":
         return (

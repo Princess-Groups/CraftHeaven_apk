@@ -22,6 +22,20 @@ import {
   LogOut,
   Menu,
   X,
+  ChevronDown,
+  ChevronRight,
+  LayoutGrid,
+  PackageSearch,
+  DollarSign,
+  Tag,
+  Store,
+  ClipboardCheck,
+  TrendingUp,
+  FileSpreadsheet,
+  Users,
+  BellRing,
+  Sliders,
+  Boxes,
 } from "lucide-react";
 import { useState } from "react";
 const logoUrl = "/ach-logo.png";
@@ -60,10 +74,27 @@ const NAV: { to: string; label: string; icon: React.ElementType; exact?: boolean
   { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
+const MC_NAV: { to: string; label: string; icon: React.ElementType; exact?: boolean }[] = [
+  { to: "/admin/mc", label: "Overview", icon: LayoutGrid, exact: true },
+  { to: "/admin/mc/products", label: "Master Products", icon: PackageSearch },
+  { to: "/admin/mc/inventory", label: "Inventory", icon: Boxes },
+  { to: "/admin/mc/costs", label: "Cost Calculation", icon: DollarSign },
+  { to: "/admin/mc/pricing", label: "Platform Pricing", icon: Tag },
+  { to: "/admin/mc/marketplace", label: "Marketplace Integration", icon: Store },
+  { to: "/admin/mc/orders", label: "Orders", icon: ClipboardCheck },
+  { to: "/admin/mc/sales", label: "Sales Management", icon: TrendingUp },
+  { to: "/admin/mc/reports", label: "Reports & Analytics", icon: BarChart3 },
+  { to: "/admin/mc/excel", label: "Excel Import / Export", icon: FileSpreadsheet },
+  { to: "/admin/mc/users", label: "User Management", icon: Users },
+  { to: "/admin/mc/notifications", label: "Notifications", icon: BellRing },
+  { to: "/admin/mc/settings", label: "Channel Settings", icon: Sliders },
+];
+
 function AdminLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [mcOpen, setMcOpen] = useState(() => pathname.startsWith("/admin/mc"));
   const { isAdmin } = Route.useRouteContext();
 
   // Staff only sees Billing; admin sees everything
@@ -135,6 +166,55 @@ function AdminLayout() {
               </Link>
             );
           })}
+
+          {/* Multi-Channel Management Section */}
+          {isAdmin && (
+            <div className="mt-2 border-t border-border pt-2">
+              <button
+                onClick={() => setMcOpen(!mcOpen)}
+                className={`flex items-center gap-3 w-full rounded-lg px-3 py-2 text-[13px] font-bold transition ${
+                  pathname.startsWith("/admin/mc")
+                    ? "text-primary"
+                    : "text-foreground hover:bg-secondary-soft"
+                }`}
+              >
+                <Boxes className="h-4 w-4" />
+                <span className="flex-1 text-left">Multi-Channel</span>
+                {mcOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+              </button>
+              {mcOpen && (
+                <div className="ml-2 mt-0.5">
+                  {MC_NAV.map((n) => {
+                    const Icon = n.icon;
+                    const active = n.exact
+                      ? pathname === n.to
+                      : pathname === n.to || pathname.startsWith(n.to + "/");
+                    return (
+                      <Link
+                        key={n.to}
+                        to={n.to}
+                        onClick={() => setOpen(false)}
+                        className={`flex items-center gap-3 rounded-lg px-3 py-1.5 text-[12px] font-medium mb-0.5 transition ${
+                          active
+                            ? "bg-primary/10 text-primary border-l-2 border-primary"
+                            : "text-muted-foreground hover:bg-secondary-soft hover:text-foreground"
+                        }`}
+                      >
+                        <Icon
+                          className={`h-3.5 w-3.5 ${active ? "text-primary" : "text-muted-foreground"}`}
+                        />
+                        {n.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </nav>
       </aside>
 

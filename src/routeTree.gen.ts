@@ -29,6 +29,7 @@ import { Route as AdminCategoriesRouteImport } from './routes/admin/categories'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminInventoryRouteImport } from './routes/admin/inventory'
 import { Route as AdminLoginRouteImport } from './routes/admin/login'
+import { Route as AdminMcRouteImport } from './routes/admin/mc'
 import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
 import { Route as AdminPosRouteImport } from './routes/admin/pos'
 import { Route as AdminProductsRouteImport } from './routes/admin/products'
@@ -41,6 +42,18 @@ import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as CategorySlugRouteImport } from './routes/category.$slug'
 import { Route as ProductSlugRouteImport } from './routes/product.$slug'
 import { Route as AuthenticatedOrdersIdRouteImport } from './routes/_authenticated/orders.$id'
+import { Route as AdminMcCostsRouteImport } from './routes/admin/mc.costs'
+import { Route as AdminMcExcelRouteImport } from './routes/admin/mc.excel'
+import { Route as AdminMcInventoryRouteImport } from './routes/admin/mc.inventory'
+import { Route as AdminMcMarketplaceRouteImport } from './routes/admin/mc.marketplace'
+import { Route as AdminMcNotificationsRouteImport } from './routes/admin/mc.notifications'
+import { Route as AdminMcOrdersRouteImport } from './routes/admin/mc.orders'
+import { Route as AdminMcPricingRouteImport } from './routes/admin/mc.pricing'
+import { Route as AdminMcProductsRouteImport } from './routes/admin/mc.products'
+import { Route as AdminMcReportsRouteImport } from './routes/admin/mc.reports'
+import { Route as AdminMcSalesRouteImport } from './routes/admin/mc.sales'
+import { Route as AdminMcSettingsRouteImport } from './routes/admin/mc.settings'
+import { Route as AdminMcUsersRouteImport } from './routes/admin/mc.users'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -141,6 +154,11 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminMcRoute = AdminMcRouteImport.update({
+  id: '/mc',
+  path: '/mc',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminOrdersRoute = AdminOrdersRouteImport.update({
   id: '/orders',
   path: '/orders',
@@ -201,6 +219,66 @@ const AuthenticatedOrdersIdRoute = AuthenticatedOrdersIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => AuthenticatedOrdersRoute,
 } as any)
+const AdminMcCostsRoute = AdminMcCostsRouteImport.update({
+  id: '/costs',
+  path: '/costs',
+  getParentRoute: () => AdminMcRoute,
+} as any)
+const AdminMcExcelRoute = AdminMcExcelRouteImport.update({
+  id: '/excel',
+  path: '/excel',
+  getParentRoute: () => AdminMcRoute,
+} as any)
+const AdminMcInventoryRoute = AdminMcInventoryRouteImport.update({
+  id: '/inventory',
+  path: '/inventory',
+  getParentRoute: () => AdminMcRoute,
+} as any)
+const AdminMcMarketplaceRoute = AdminMcMarketplaceRouteImport.update({
+  id: '/marketplace',
+  path: '/marketplace',
+  getParentRoute: () => AdminMcRoute,
+} as any)
+const AdminMcNotificationsRoute = AdminMcNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => AdminMcRoute,
+} as any)
+const AdminMcOrdersRoute = AdminMcOrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
+  getParentRoute: () => AdminMcRoute,
+} as any)
+const AdminMcPricingRoute = AdminMcPricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => AdminMcRoute,
+} as any)
+const AdminMcProductsRoute = AdminMcProductsRouteImport.update({
+  id: '/products',
+  path: '/products',
+  getParentRoute: () => AdminMcRoute,
+} as any)
+const AdminMcReportsRoute = AdminMcReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AdminMcRoute,
+} as any)
+const AdminMcSalesRoute = AdminMcSalesRouteImport.update({
+  id: '/sales',
+  path: '/sales',
+  getParentRoute: () => AdminMcRoute,
+} as any)
+const AdminMcSettingsRoute = AdminMcSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AdminMcRoute,
+} as any)
+const AdminMcUsersRoute = AdminMcUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AdminMcRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -221,6 +299,7 @@ export interface FileRoutesByFullPath {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/inventory': typeof AdminInventoryRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mc': typeof AdminMcRouteWithChildren
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/pos': typeof AdminPosRoute
   '/admin/products': typeof AdminProductsRoute
@@ -234,6 +313,18 @@ export interface FileRoutesByFullPath {
   '/product/$slug': typeof ProductSlugRoute
   '/admin/': typeof AdminIndexRoute
   '/orders/$id': typeof AuthenticatedOrdersIdRoute
+  '/admin/mc/costs': typeof AdminMcCostsRoute
+  '/admin/mc/excel': typeof AdminMcExcelRoute
+  '/admin/mc/inventory': typeof AdminMcInventoryRoute
+  '/admin/mc/marketplace': typeof AdminMcMarketplaceRoute
+  '/admin/mc/notifications': typeof AdminMcNotificationsRoute
+  '/admin/mc/orders': typeof AdminMcOrdersRoute
+  '/admin/mc/pricing': typeof AdminMcPricingRoute
+  '/admin/mc/products': typeof AdminMcProductsRoute
+  '/admin/mc/reports': typeof AdminMcReportsRoute
+  '/admin/mc/sales': typeof AdminMcSalesRoute
+  '/admin/mc/settings': typeof AdminMcSettingsRoute
+  '/admin/mc/users': typeof AdminMcUsersRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -253,6 +344,7 @@ export interface FileRoutesByTo {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/inventory': typeof AdminInventoryRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mc': typeof AdminMcRouteWithChildren
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/pos': typeof AdminPosRoute
   '/admin/products': typeof AdminProductsRoute
@@ -266,6 +358,18 @@ export interface FileRoutesByTo {
   '/product/$slug': typeof ProductSlugRoute
   '/admin': typeof AdminIndexRoute
   '/orders/$id': typeof AuthenticatedOrdersIdRoute
+  '/admin/mc/costs': typeof AdminMcCostsRoute
+  '/admin/mc/excel': typeof AdminMcExcelRoute
+  '/admin/mc/inventory': typeof AdminMcInventoryRoute
+  '/admin/mc/marketplace': typeof AdminMcMarketplaceRoute
+  '/admin/mc/notifications': typeof AdminMcNotificationsRoute
+  '/admin/mc/orders': typeof AdminMcOrdersRoute
+  '/admin/mc/pricing': typeof AdminMcPricingRoute
+  '/admin/mc/products': typeof AdminMcProductsRoute
+  '/admin/mc/reports': typeof AdminMcReportsRoute
+  '/admin/mc/sales': typeof AdminMcSalesRoute
+  '/admin/mc/settings': typeof AdminMcSettingsRoute
+  '/admin/mc/users': typeof AdminMcUsersRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -288,6 +392,7 @@ export interface FileRoutesById {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/inventory': typeof AdminInventoryRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mc': typeof AdminMcRouteWithChildren
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/pos': typeof AdminPosRoute
   '/admin/products': typeof AdminProductsRoute
@@ -301,6 +406,18 @@ export interface FileRoutesById {
   '/product/$slug': typeof ProductSlugRoute
   '/admin/': typeof AdminIndexRoute
   '/_authenticated/orders/$id': typeof AuthenticatedOrdersIdRoute
+  '/admin/mc/costs': typeof AdminMcCostsRoute
+  '/admin/mc/excel': typeof AdminMcExcelRoute
+  '/admin/mc/inventory': typeof AdminMcInventoryRoute
+  '/admin/mc/marketplace': typeof AdminMcMarketplaceRoute
+  '/admin/mc/notifications': typeof AdminMcNotificationsRoute
+  '/admin/mc/orders': typeof AdminMcOrdersRoute
+  '/admin/mc/pricing': typeof AdminMcPricingRoute
+  '/admin/mc/products': typeof AdminMcProductsRoute
+  '/admin/mc/reports': typeof AdminMcReportsRoute
+  '/admin/mc/sales': typeof AdminMcSalesRoute
+  '/admin/mc/settings': typeof AdminMcSettingsRoute
+  '/admin/mc/users': typeof AdminMcUsersRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -323,6 +440,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/inventory'
     | '/admin/login'
+    | '/admin/mc'
     | '/admin/orders'
     | '/admin/pos'
     | '/admin/products'
@@ -336,6 +454,18 @@ export interface FileRouteTypes {
     | '/product/$slug'
     | '/admin/'
     | '/orders/$id'
+    | '/admin/mc/costs'
+    | '/admin/mc/excel'
+    | '/admin/mc/inventory'
+    | '/admin/mc/marketplace'
+    | '/admin/mc/notifications'
+    | '/admin/mc/orders'
+    | '/admin/mc/pricing'
+    | '/admin/mc/products'
+    | '/admin/mc/reports'
+    | '/admin/mc/sales'
+    | '/admin/mc/settings'
+    | '/admin/mc/users'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -355,6 +485,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/inventory'
     | '/admin/login'
+    | '/admin/mc'
     | '/admin/orders'
     | '/admin/pos'
     | '/admin/products'
@@ -368,6 +499,18 @@ export interface FileRouteTypes {
     | '/product/$slug'
     | '/admin'
     | '/orders/$id'
+    | '/admin/mc/costs'
+    | '/admin/mc/excel'
+    | '/admin/mc/inventory'
+    | '/admin/mc/marketplace'
+    | '/admin/mc/notifications'
+    | '/admin/mc/orders'
+    | '/admin/mc/pricing'
+    | '/admin/mc/products'
+    | '/admin/mc/reports'
+    | '/admin/mc/sales'
+    | '/admin/mc/settings'
+    | '/admin/mc/users'
   id:
     | '__root__'
     | '/'
@@ -389,6 +532,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/inventory'
     | '/admin/login'
+    | '/admin/mc'
     | '/admin/orders'
     | '/admin/pos'
     | '/admin/products'
@@ -402,6 +546,18 @@ export interface FileRouteTypes {
     | '/product/$slug'
     | '/admin/'
     | '/_authenticated/orders/$id'
+    | '/admin/mc/costs'
+    | '/admin/mc/excel'
+    | '/admin/mc/inventory'
+    | '/admin/mc/marketplace'
+    | '/admin/mc/notifications'
+    | '/admin/mc/orders'
+    | '/admin/mc/pricing'
+    | '/admin/mc/products'
+    | '/admin/mc/reports'
+    | '/admin/mc/sales'
+    | '/admin/mc/settings'
+    | '/admin/mc/users'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -557,6 +713,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLoginRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/mc': {
+      id: '/admin/mc'
+      path: '/mc'
+      fullPath: '/admin/mc'
+      preLoaderRoute: typeof AdminMcRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/orders': {
       id: '/admin/orders'
       path: '/orders'
@@ -641,6 +804,90 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOrdersIdRouteImport
       parentRoute: typeof AuthenticatedOrdersRoute
     }
+    '/admin/mc/costs': {
+      id: '/admin/mc/costs'
+      path: '/costs'
+      fullPath: '/admin/mc/costs'
+      preLoaderRoute: typeof AdminMcCostsRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
+    '/admin/mc/excel': {
+      id: '/admin/mc/excel'
+      path: '/excel'
+      fullPath: '/admin/mc/excel'
+      preLoaderRoute: typeof AdminMcExcelRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
+    '/admin/mc/inventory': {
+      id: '/admin/mc/inventory'
+      path: '/inventory'
+      fullPath: '/admin/mc/inventory'
+      preLoaderRoute: typeof AdminMcInventoryRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
+    '/admin/mc/marketplace': {
+      id: '/admin/mc/marketplace'
+      path: '/marketplace'
+      fullPath: '/admin/mc/marketplace'
+      preLoaderRoute: typeof AdminMcMarketplaceRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
+    '/admin/mc/notifications': {
+      id: '/admin/mc/notifications'
+      path: '/notifications'
+      fullPath: '/admin/mc/notifications'
+      preLoaderRoute: typeof AdminMcNotificationsRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
+    '/admin/mc/orders': {
+      id: '/admin/mc/orders'
+      path: '/orders'
+      fullPath: '/admin/mc/orders'
+      preLoaderRoute: typeof AdminMcOrdersRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
+    '/admin/mc/pricing': {
+      id: '/admin/mc/pricing'
+      path: '/pricing'
+      fullPath: '/admin/mc/pricing'
+      preLoaderRoute: typeof AdminMcPricingRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
+    '/admin/mc/products': {
+      id: '/admin/mc/products'
+      path: '/products'
+      fullPath: '/admin/mc/products'
+      preLoaderRoute: typeof AdminMcProductsRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
+    '/admin/mc/reports': {
+      id: '/admin/mc/reports'
+      path: '/reports'
+      fullPath: '/admin/mc/reports'
+      preLoaderRoute: typeof AdminMcReportsRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
+    '/admin/mc/sales': {
+      id: '/admin/mc/sales'
+      path: '/sales'
+      fullPath: '/admin/mc/sales'
+      preLoaderRoute: typeof AdminMcSalesRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
+    '/admin/mc/settings': {
+      id: '/admin/mc/settings'
+      path: '/settings'
+      fullPath: '/admin/mc/settings'
+      preLoaderRoute: typeof AdminMcSettingsRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
+    '/admin/mc/users': {
+      id: '/admin/mc/users'
+      path: '/users'
+      fullPath: '/admin/mc/users'
+      preLoaderRoute: typeof AdminMcUsersRouteImport
+      parentRoute: typeof AdminMcRoute
+    }
   }
 }
 
@@ -676,6 +923,39 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface AdminMcRouteChildren {
+  AdminMcCostsRoute: typeof AdminMcCostsRoute
+  AdminMcExcelRoute: typeof AdminMcExcelRoute
+  AdminMcInventoryRoute: typeof AdminMcInventoryRoute
+  AdminMcMarketplaceRoute: typeof AdminMcMarketplaceRoute
+  AdminMcNotificationsRoute: typeof AdminMcNotificationsRoute
+  AdminMcOrdersRoute: typeof AdminMcOrdersRoute
+  AdminMcPricingRoute: typeof AdminMcPricingRoute
+  AdminMcProductsRoute: typeof AdminMcProductsRoute
+  AdminMcReportsRoute: typeof AdminMcReportsRoute
+  AdminMcSalesRoute: typeof AdminMcSalesRoute
+  AdminMcSettingsRoute: typeof AdminMcSettingsRoute
+  AdminMcUsersRoute: typeof AdminMcUsersRoute
+}
+
+const AdminMcRouteChildren: AdminMcRouteChildren = {
+  AdminMcCostsRoute: AdminMcCostsRoute,
+  AdminMcExcelRoute: AdminMcExcelRoute,
+  AdminMcInventoryRoute: AdminMcInventoryRoute,
+  AdminMcMarketplaceRoute: AdminMcMarketplaceRoute,
+  AdminMcNotificationsRoute: AdminMcNotificationsRoute,
+  AdminMcOrdersRoute: AdminMcOrdersRoute,
+  AdminMcPricingRoute: AdminMcPricingRoute,
+  AdminMcProductsRoute: AdminMcProductsRoute,
+  AdminMcReportsRoute: AdminMcReportsRoute,
+  AdminMcSalesRoute: AdminMcSalesRoute,
+  AdminMcSettingsRoute: AdminMcSettingsRoute,
+  AdminMcUsersRoute: AdminMcUsersRoute,
+}
+
+const AdminMcRouteWithChildren =
+  AdminMcRoute._addFileChildren(AdminMcRouteChildren)
+
 interface AdminRouteRouteChildren {
   AdminAnalyticsRoute: typeof AdminAnalyticsRoute
   AdminBillingRoute: typeof AdminBillingRoute
@@ -684,6 +964,7 @@ interface AdminRouteRouteChildren {
   AdminCustomersRoute: typeof AdminCustomersRoute
   AdminInventoryRoute: typeof AdminInventoryRoute
   AdminLoginRoute: typeof AdminLoginRoute
+  AdminMcRoute: typeof AdminMcRouteWithChildren
   AdminOrdersRoute: typeof AdminOrdersRoute
   AdminPosRoute: typeof AdminPosRoute
   AdminProductsRoute: typeof AdminProductsRoute
@@ -704,6 +985,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminCustomersRoute: AdminCustomersRoute,
   AdminInventoryRoute: AdminInventoryRoute,
   AdminLoginRoute: AdminLoginRoute,
+  AdminMcRoute: AdminMcRouteWithChildren,
   AdminOrdersRoute: AdminOrdersRoute,
   AdminPosRoute: AdminPosRoute,
   AdminProductsRoute: AdminProductsRoute,
