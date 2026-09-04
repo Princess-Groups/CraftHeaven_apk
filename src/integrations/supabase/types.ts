@@ -662,7 +662,9 @@ export type Database = {
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          { foreignKeyName: "user_roles_user_id_fkey"; columns: ["user_id"]; isOneToOne: false; referencedRelation: "profiles"; referencedColumns: ["id"] }
+        ]
       }
       wishlists: {
         Row: {
@@ -874,6 +876,878 @@ export type Database = {
         }
         Relationships: []
       }
+      mc_master_products: {
+        Row: {
+          id: string
+          name: string
+          sku: string | null
+          barcode: string | null
+          category_id: string | null
+          subcategory: string | null
+          brand_id: string | null
+          description: string | null
+          image_url: string | null
+          size: string | null
+          colour: string | null
+          material: string | null
+          unit: string
+          purchase_price: number
+          base_cost: number
+          selling_price: number
+          minimum_stock: number
+          current_stock: number
+          available_stock: number
+          reserved_stock: number
+          damaged_stock: number
+          supplier_name: string | null
+          gst_rate: number
+          status: string
+          linked_product_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          sku?: string | null
+          barcode?: string | null
+          category_id?: string | null
+          subcategory?: string | null
+          brand_id?: string | null
+          description?: string | null
+          image_url?: string | null
+          size?: string | null
+          colour?: string | null
+          material?: string | null
+          unit?: string
+          purchase_price?: number
+          base_cost?: number
+          selling_price?: number
+          minimum_stock?: number
+          current_stock?: number
+          available_stock?: number
+          reserved_stock?: number
+          damaged_stock?: number
+          supplier_name?: string | null
+          gst_rate?: number
+          status?: string
+          linked_product_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          sku?: string | null
+          barcode?: string | null
+          category_id?: string | null
+          subcategory?: string | null
+          brand_id?: string | null
+          description?: string | null
+          image_url?: string | null
+          size?: string | null
+          colour?: string | null
+          material?: string | null
+          unit?: string
+          purchase_price?: number
+          base_cost?: number
+          selling_price?: number
+          minimum_stock?: number
+          current_stock?: number
+          available_stock?: number
+          reserved_stock?: number
+          damaged_stock?: number
+          supplier_name?: string | null
+          gst_rate?: number
+          status?: string
+          linked_product_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      mc_product_variants: {
+        Row: {
+          id: string
+          master_product_id: string
+          name: string
+          sku: string | null
+          barcode: string | null
+          size: string | null
+          colour: string | null
+          material: string | null
+          purchase_price: number
+          selling_price: number
+          stock: number
+          image_url: string | null
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          master_product_id: string
+          name: string
+          sku?: string | null
+          barcode?: string | null
+          size?: string | null
+          colour?: string | null
+          material?: string | null
+          purchase_price?: number
+          selling_price?: number
+          stock?: number
+          image_url?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          master_product_id?: string
+          name?: string
+          sku?: string | null
+          barcode?: string | null
+          size?: string | null
+          colour?: string | null
+          material?: string | null
+          purchase_price?: number
+          selling_price?: number
+          stock?: number
+          image_url?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      mc_channel_prices: {
+        Row: {
+          id: string
+          master_product_id: string
+          channel: string
+          price: number
+          min_price: number | null
+          max_price: number | null
+          discount_price: number | null
+          promotional_price: number | null
+          platform_margin_pct: number
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          master_product_id: string
+          channel: string
+          price?: number
+          min_price?: number | null
+          max_price?: number | null
+          discount_price?: number | null
+          promotional_price?: number | null
+          platform_margin_pct?: number
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          master_product_id?: string
+          channel?: string
+          price?: number
+          min_price?: number | null
+          max_price?: number | null
+          discount_price?: number | null
+          promotional_price?: number | null
+          platform_margin_pct?: number
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      mc_inventory: {
+        Row: {
+          id: string
+          master_product_id: string
+          variant_id: string | null
+          physical_stock: number
+          available_stock: number
+          reserved_stock: number
+          sold_stock: number
+          damaged_stock: number
+          reorder_level: number
+          last_updated: string
+        }
+        Insert: {
+          id?: string
+          master_product_id: string
+          variant_id?: string | null
+          physical_stock?: number
+          available_stock?: number
+          reserved_stock?: number
+          sold_stock?: number
+          damaged_stock?: number
+          reorder_level?: number
+          last_updated?: string
+        }
+        Update: {
+          id?: string
+          master_product_id?: string
+          variant_id?: string | null
+          physical_stock?: number
+          available_stock?: number
+          reserved_stock?: number
+          sold_stock?: number
+          damaged_stock?: number
+          reorder_level?: number
+          last_updated?: string
+        }
+        Relationships: [
+          { foreignKeyName: "mc_inventory_master_product_id_fkey"; columns: ["master_product_id"]; isOneToOne: false; referencedRelation: "mc_master_products"; referencedColumns: ["id"] },
+          { foreignKeyName: "mc_inventory_variant_id_fkey"; columns: ["variant_id"]; isOneToOne: false; referencedRelation: "mc_product_variants"; referencedColumns: ["id"] }
+        ]
+      }
+      mc_inventory_movements: {
+        Row: {
+          id: string
+          master_product_id: string
+          variant_id: string | null
+          quantity: number
+          movement_type: string
+          channel: string | null
+          source: string | null
+          destination: string | null
+          reference_id: string | null
+          notes: string | null
+          user_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          master_product_id: string
+          variant_id?: string | null
+          quantity: number
+          movement_type: string
+          channel?: string | null
+          source?: string | null
+          destination?: string | null
+          reference_id?: string | null
+          notes?: string | null
+          user_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          master_product_id?: string
+          variant_id?: string | null
+          quantity?: number
+          movement_type?: string
+          channel?: string | null
+          source?: string | null
+          destination?: string | null
+          reference_id?: string | null
+          notes?: string | null
+          user_id?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "mc_inventory_movements_master_product_id_fkey"; columns: ["master_product_id"]; isOneToOne: false; referencedRelation: "mc_master_products"; referencedColumns: ["id"] }
+        ]
+      }
+      mc_inventory_reservations: {
+        Row: {
+          id: string
+          master_product_id: string
+          variant_id: string | null
+          channel: string
+          order_reference: string
+          quantity: number
+          status: string
+          expires_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          master_product_id: string
+          variant_id?: string | null
+          channel: string
+          order_reference: string
+          quantity: number
+          status?: string
+          expires_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          master_product_id?: string
+          variant_id?: string | null
+          channel?: string
+          order_reference?: string
+          quantity?: number
+          status?: string
+          expires_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      mc_marketplace_channels: {
+        Row: {
+          id: string
+          name: string
+          channel: string
+          is_enabled: boolean
+          connection_status: string
+          sync_frequency_minutes: number
+          inventory_sync: boolean
+          product_sync: boolean
+          price_sync: boolean
+          order_sync: boolean
+          default_pricing_rule: string
+          settings: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          channel: string
+          is_enabled?: boolean
+          connection_status?: string
+          sync_frequency_minutes?: number
+          inventory_sync?: boolean
+          product_sync?: boolean
+          price_sync?: boolean
+          order_sync?: boolean
+          default_pricing_rule?: string
+          settings?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          channel?: string
+          is_enabled?: boolean
+          connection_status?: string
+          sync_frequency_minutes?: number
+          inventory_sync?: boolean
+          product_sync?: boolean
+          price_sync?: boolean
+          order_sync?: boolean
+          default_pricing_rule?: string
+          settings?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "mc_marketplace_connections_channel_id_fkey"; columns: ["id"]; isOneToOne: false; referencedRelation: "mc_marketplace_connections"; referencedColumns: ["channel_id"] }
+        ]
+      }
+      mc_marketplace_connections: {
+        Row: {
+          id: string
+          channel_id: string
+          seller_id: string | null
+          api_key_encrypted: string | null
+          api_secret_encrypted: string | null
+          marketplace_name: string | null
+          region: string
+          status: string
+          last_sync_at: string | null
+          error_message: string | null
+          config: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          channel_id: string
+          seller_id?: string | null
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          marketplace_name?: string | null
+          region?: string
+          status?: string
+          last_sync_at?: string | null
+          error_message?: string | null
+          config?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          channel_id?: string
+          seller_id?: string | null
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          marketplace_name?: string | null
+          region?: string
+          status?: string
+          last_sync_at?: string | null
+          error_message?: string | null
+          config?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      mc_marketplace_products: {
+        Row: {
+          id: string
+          master_product_id: string
+          channel_id: string
+          marketplace_product_id: string | null
+          marketplace_sku: string | null
+          listing_status: string
+          sync_status: string
+          last_synced_at: string | null
+          marketplace_data: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          master_product_id: string
+          channel_id: string
+          marketplace_product_id?: string | null
+          marketplace_sku?: string | null
+          listing_status?: string
+          sync_status?: string
+          last_synced_at?: string | null
+          marketplace_data?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          master_product_id?: string
+          channel_id?: string
+          marketplace_product_id?: string | null
+          marketplace_sku?: string | null
+          listing_status?: string
+          sync_status?: string
+          last_synced_at?: string | null
+          marketplace_data?: Json
+          created_at?: string
+        }
+        Relationships: []
+      }
+      mc_marketplace_orders: {
+        Row: {
+          id: string
+          channel_id: string
+          marketplace_order_id: string
+          customer_name: string | null
+          customer_email: string | null
+          customer_phone: string | null
+          shipping_address: Json | null
+          status: string
+          payment_status: string | null
+          payment_method: string | null
+          subtotal: number
+          discount: number
+          shipping_charges: number
+          tax: number
+          total: number
+          platform_fees: number
+          commission: number
+          net_amount: number
+          marketplace_data: Json
+          synced_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          channel_id: string
+          marketplace_order_id: string
+          customer_name?: string | null
+          customer_email?: string | null
+          customer_phone?: string | null
+          shipping_address?: Json | null
+          status?: string
+          payment_status?: string | null
+          payment_method?: string | null
+          subtotal?: number
+          discount?: number
+          shipping_charges?: number
+          tax?: number
+          total?: number
+          platform_fees?: number
+          commission?: number
+          net_amount?: number
+          marketplace_data?: Json
+          synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          channel_id?: string
+          marketplace_order_id?: string
+          customer_name?: string | null
+          customer_email?: string | null
+          customer_phone?: string | null
+          shipping_address?: Json | null
+          status?: string
+          payment_status?: string | null
+          payment_method?: string | null
+          subtotal?: number
+          discount?: number
+          shipping_charges?: number
+          tax?: number
+          total?: number
+          platform_fees?: number
+          commission?: number
+          net_amount?: number
+          marketplace_data?: Json
+          synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "mc_marketplace_orders_channel_id_fkey"; columns: ["channel_id"]; isOneToOne: false; referencedRelation: "mc_marketplace_channels"; referencedColumns: ["id"] }
+        ]
+      }
+      mc_marketplace_order_items: {
+        Row: {
+          id: string
+          order_id: string
+          master_product_id: string | null
+          product_name: string
+          sku: string | null
+          quantity: number
+          unit_price: number
+          discount: number
+          tax: number
+          total: number
+          marketplace_data: Json
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          master_product_id?: string | null
+          product_name: string
+          sku?: string | null
+          quantity?: number
+          unit_price?: number
+          discount?: number
+          tax?: number
+          total?: number
+          marketplace_data?: Json
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          master_product_id?: string | null
+          product_name?: string
+          sku?: string | null
+          quantity?: number
+          unit_price?: number
+          discount?: number
+          tax?: number
+          total?: number
+          marketplace_data?: Json
+        }
+        Relationships: [
+          { foreignKeyName: "mc_marketplace_order_items_order_id_fkey"; columns: ["order_id"]; isOneToOne: false; referencedRelation: "mc_marketplace_orders"; referencedColumns: ["id"] },
+          { foreignKeyName: "mc_marketplace_order_items_master_product_id_fkey"; columns: ["master_product_id"]; isOneToOne: false; referencedRelation: "mc_master_products"; referencedColumns: ["id"] }
+        ]
+      }
+      mc_sales_transactions: {
+        Row: {
+          id: string
+          channel: string
+          marketplace_order_id: string | null
+          customer_name: string | null
+          customer_email: string | null
+          subtotal: number
+          discount: number
+          shipping: number
+          tax: number
+          platform_fees: number
+          total: number
+          payment_status: string
+          order_status: string
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          channel: string
+          marketplace_order_id?: string | null
+          customer_name?: string | null
+          customer_email?: string | null
+          subtotal?: number
+          discount?: number
+          shipping?: number
+          tax?: number
+          platform_fees?: number
+          total?: number
+          payment_status?: string
+          order_status?: string
+          notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          channel?: string
+          marketplace_order_id?: string | null
+          customer_name?: string | null
+          customer_email?: string | null
+          subtotal?: number
+          discount?: number
+          shipping?: number
+          tax?: number
+          platform_fees?: number
+          total?: number
+          payment_status?: string
+          order_status?: string
+          notes?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "mc_channel_prices_master_product_id_fkey"; columns: ["master_product_id"]; isOneToOne: false; referencedRelation: "mc_master_products"; referencedColumns: ["id"] }
+        ]
+      }
+      mc_cost_components: {
+        Row: {
+          id: string
+          master_product_id: string
+          cost_type: string
+          amount: number
+          percentage: number | null
+          description: string | null
+          channel: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          master_product_id: string
+          cost_type: string
+          amount?: number
+          percentage?: number | null
+          description?: string | null
+          channel?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          master_product_id?: string
+          cost_type?: string
+          amount?: number
+          percentage?: number | null
+          description?: string | null
+          channel?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      mc_product_costs: {
+        Row: {
+          id: string
+          master_product_id: string
+          purchase_cost: number
+          gst_amount: number
+          shipping_cost: number
+          transport_cost: number
+          packaging_cost: number
+          marketplace_fee: number
+          commission: number
+          payment_gateway_charges: number
+          other_expenses: number
+          landed_cost: number
+          gross_profit: number
+          net_profit: number
+          profit_margin_pct: number
+          calculated_at: string
+        }
+        Insert: {
+          id?: string
+          master_product_id: string
+          purchase_cost?: number
+          gst_amount?: number
+          shipping_cost?: number
+          transport_cost?: number
+          packaging_cost?: number
+          marketplace_fee?: number
+          commission?: number
+          payment_gateway_charges?: number
+          other_expenses?: number
+          landed_cost?: number
+          gross_profit?: number
+          net_profit?: number
+          profit_margin_pct?: number
+          calculated_at?: string
+        }
+        Update: {
+          id?: string
+          master_product_id?: string
+          purchase_cost?: number
+          gst_amount?: number
+          shipping_cost?: number
+          transport_cost?: number
+          packaging_cost?: number
+          marketplace_fee?: number
+          commission?: number
+          payment_gateway_charges?: number
+          other_expenses?: number
+          landed_cost?: number
+          gross_profit?: number
+          net_profit?: number
+          profit_margin_pct?: number
+          calculated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "mc_product_costs_master_product_id_fkey"; columns: ["master_product_id"]; isOneToOne: false; referencedRelation: "mc_master_products"; referencedColumns: ["id"] }
+        ]
+      }
+      mc_sync_jobs: {
+        Row: {
+          id: string
+          channel_id: string
+          job_type: string
+          status: string
+          items_total: number
+          items_synced: number
+          items_failed: number
+          error_message: string | null
+          started_at: string | null
+          completed_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          channel_id: string
+          job_type: string
+          status?: string
+          items_total?: number
+          items_synced?: number
+          items_failed?: number
+          error_message?: string | null
+          started_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          channel_id?: string
+          job_type?: string
+          status?: string
+          items_total?: number
+          items_synced?: number
+          items_failed?: number
+          error_message?: string | null
+          started_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "mc_sync_jobs_channel_id_fkey"; columns: ["channel_id"]; isOneToOne: false; referencedRelation: "mc_marketplace_channels"; referencedColumns: ["id"] }
+        ]
+      }
+      mc_sync_logs: {
+        Row: {
+          id: string
+          job_id: string
+          level: string
+          message: string
+          details: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          job_id: string
+          level?: string
+          message: string
+          details?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          job_id?: string
+          level?: string
+          message?: string
+          details?: Json
+          created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "mc_sync_logs_job_id_fkey"; columns: ["job_id"]; isOneToOne: false; referencedRelation: "mc_sync_jobs"; referencedColumns: ["id"] }
+        ]
+      }
+      mc_notifications: {
+        Row: {
+          id: string
+          title: string
+          body: string | null
+          kind: string
+          channel: string | null
+          entity_type: string | null
+          entity_id: string | null
+          meta: Json
+          is_read: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          title: string
+          body?: string | null
+          kind?: string
+          channel?: string | null
+          entity_type?: string | null
+          entity_id?: string | null
+          meta?: Json
+          is_read?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          title?: string
+          body?: string | null
+          kind?: string
+          channel?: string | null
+          entity_type?: string | null
+          entity_id?: string | null
+          meta?: Json
+          is_read?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      mc_import_jobs: {
+        Row: {
+          id: string
+          filename: string
+          entity_type: string
+          status: string
+          total_rows: number
+          valid_rows: number
+          error_rows: number
+          imported_by: string | null
+          error_log: Json
+          created_at: string
+          completed_at: string
+        }
+        Insert: {
+          id?: string
+          filename: string
+          entity_type: string
+          status?: string
+          total_rows?: number
+          valid_rows?: number
+          error_rows?: number
+          imported_by?: string | null
+          error_log?: Json
+          created_at?: string
+          completed_at?: string
+        }
+        Update: {
+          id?: string
+          filename?: string
+          entity_type?: string
+          status?: string
+          total_rows?: number
+          valid_rows?: number
+          error_rows?: number
+          imported_by?: string | null
+          error_log?: Json
+          created_at?: string
+          completed_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1000,7 +1874,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "staff" | "customer"
+      app_role: "admin" | "staff" | "customer" | "inventory_manager" | "purchase_manager" | "billing_staff" | "accounts_staff" | "marketplace_manager" | "viewer"
       delivery_type: "DELIVERY" | "PICKUP"
       order_channel: "ONLINE" | "IN_STORE"
       order_status:
@@ -1139,7 +2013,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "staff", "customer"],
+      app_role: ["admin", "staff", "customer", "inventory_manager", "purchase_manager", "billing_staff", "accounts_staff", "marketplace_manager", "viewer"],
       delivery_type: ["DELIVERY", "PICKUP"],
       order_channel: ["ONLINE", "IN_STORE"],
       order_status: [

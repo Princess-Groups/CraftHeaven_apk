@@ -22,7 +22,7 @@ type InventoryItem = {
   reorder_level: number;
   last_updated: string;
   mc_master_products: { name: string; sku: string; image_url: string | null; unit: string } | null;
-};
+} & Record<string, unknown>;
 
 type Movement = {
   id: string;
@@ -93,7 +93,7 @@ function MCInventory() {
   }, [inventory]);
 
   const filteredItems = useMemo(() => {
-    const items = inventory ?? [];
+    const items = (inventory ?? []) as InventoryItem[];
     if (filter === "low") return items.filter((i) => (i.physical_stock ?? 0) > 0 && (i.physical_stock ?? 0) <= (i.reorder_level ?? 5));
     if (filter === "out") return items.filter((i) => (i.physical_stock ?? 0) <= 0);
     if (filter === "high") return items.filter((i) => (i.physical_stock ?? 0) > (i.reorder_level ?? 5));

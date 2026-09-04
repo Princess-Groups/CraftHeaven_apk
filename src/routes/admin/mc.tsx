@@ -47,7 +47,7 @@ function MCOverview() {
   const { data: syncJobs } = useQuery({
     queryKey: ["mc-sync-jobs-recent"],
     queryFn: async () =>
-      (await supabase.from("mc_sync_jobs").select("id,status,job_type,items_synced,items_failed,created_at").order("created_at", { ascending: false }).limit(10)).data ?? [],
+      (await supabase.from("mc_sync_jobs").select("id,status,job_type,items_total,items_synced,items_failed,created_at").order("created_at", { ascending: false }).limit(10)).data ?? [],
   });
 
   const stats = useMemo(() => {

@@ -27,8 +27,17 @@ function MarketplaceIntegration() {
     queryFn: async () =>
       (await supabase
         .from("mc_marketplace_channels")
-        .select("*, mc_marketplace_connections(*)")
+        .select("*")
         .order("channel")
+      ).data ?? [],
+  });
+
+  const { data: connections } = useQuery({
+    queryKey: ["mc-marketplace-connections"],
+    queryFn: async () =>
+      (await supabase
+        .from("mc_marketplace_connections")
+        .select("*")
       ).data ?? [],
   });
 
@@ -37,7 +46,7 @@ function MarketplaceIntegration() {
     queryFn: async () =>
       (await supabase
         .from("mc_sync_jobs")
-        .select("*, mc_marketplace_channels(name,channel)")
+        .select("*")
         .order("created_at", { ascending: false })
         .limit(20)
       ).data ?? [],
@@ -52,7 +61,7 @@ function MarketplaceIntegration() {
 
   async function saveConnection(channelId: string) {
     if (!config.seller_id.trim()) return toast.error("Seller ID is required");
-    const existing = (channels ?? []).find((c) => c.id === channelId)?.mc_marketplace_connections?.[0];
+    const existing = (connections ?? []).find((c) => c.channel_id === channelId);
     const payload = {
       channel_id: channelId,
       seller_id: config.seller_id,
@@ -97,7 +106,7 @@ function MarketplaceIntegration() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {(channels ?? []).map((ch) => {
           const icon = CHANNEL_ICONS[ch.channel] || { emoji: "🏪", color: "bg-gray-50 border-gray-200" };
-          const conn = ch.mc_marketplace_connections?.[0];
+          const conn = (connections ?? []).find((c) => c.channel_id === ch.id);
           return (
             <div key={ch.id} className={`rounded-xl border-2 bg-white shadow-sm p-5 ${icon.color}`}>
               <div className="flex items-start justify-between mb-4">
@@ -181,7 +190,7 @@ function MarketplaceIntegration() {
           <tbody>
             {(recentSyncs ?? []).map((j) => (
               <tr key={j.id} className="border-b border-border/50 last:border-0">
-                <td className="px-3 py-2 text-xs font-semibold">{j.mc_marketplace_channels?.name ?? "—"}</td>
+                <td className="px-3 py-2 text-xs font-semibold">{(channels ?? []).find((c) => c.id === j.channel_id)?.name ?? "—"}</td>
                 <td className="px-3 py-2 text-xs">{j.job_type}</td>
                 <td className="px-3 py-2 text-center">
                   <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${

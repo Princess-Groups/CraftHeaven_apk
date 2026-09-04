@@ -30,8 +30,8 @@ function MCChannelSettings() {
     default_pricing_rule: string;
   }>>>({});
 
-  function getEdit(channelId: string, channels: any[]) {
-    const ch = channels?.find((c: any) => c.id === channelId);
+  function getEdit(channelId: string, channelList: typeof channels): Record<string, any> {
+    const ch = channelList?.find((c) => c.id === channelId);
     if (!ch) return {};
     return { ...ch, ...(edits[channelId] || {}) };
   }

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useState } from "react";
 import { Users, Plus, Trash2, Shield } from "lucide-react";
 import { toast } from "sonner";
@@ -30,7 +31,7 @@ type UserRole = {
 function MCUserManagement() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
-  const [newUser, setNewUser] = useState({ email: "", password: "", full_name: "", role: "viewer" });
+  const [newUser, setNewUser] = useState({ email: "", password: "", full_name: "", role: "viewer" as Database["public"]["Enums"]["app_role"] });
 
   const { data: roles } = useQuery({
     queryKey: ["mc-user-roles"],
@@ -60,7 +61,7 @@ function MCUserManagement() {
     }
   }
 
-  async function updateRole(userId: string, newRole: string) {
+  async function updateRole(userId: string, newRole: Database["public"]["Enums"]["app_role"]) {
     const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
     if (error) return toast.error(error.message);
     toast.success("Role updated");
@@ -117,7 +118,7 @@ function MCUserManagement() {
                 <td className="px-3 py-2 text-xs font-semibold">{r.profiles?.full_name ?? "—"}</td>
                 <td className="px-3 py-2 text-xs text-muted-foreground">{r.profiles?.phone ?? "—"}</td>
                 <td className="px-3 py-2 text-center">
-                  <select value={r.role} onChange={(e) => updateRole(r.user_id, e.target.value)} className="rounded border border-border px-2 py-1 text-[10px] font-semibold bg-white">
+                  <select value={r.role} onChange={(e) => updateRole(r.user_id, e.target.value as Database["public"]["Enums"]["app_role"])} className="rounded border border-border px-2 py-1 text-[10px] font-semibold bg-white">
                     {MC_ROLES.map((ro) => <option key={ro.value} value={ro.value}>{ro.label}</option>)}
                   </select>
                 </td>
@@ -153,7 +154,7 @@ function MCUserManagement() {
               </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-muted-foreground uppercase">Role</label>
-                <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })} className={inputCls}>
+                <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value as Database["public"]["Enums"]["app_role"] })} className={inputCls}>
                   {MC_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>)}
                 </select>
               </div>
