@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useMemo } from "react";
@@ -15,9 +15,16 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/mc")({
-  head: () => ({ meta: [{ title: "Multi-Channel Overview — ACH Admin" }] }),
-  component: MCOverview,
+  head: () => ({ meta: [{ title: "Multi-Channel Management — ACH Admin" }] }),
+  component: MCLayout,
 });
+
+function MCLayout() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isExactOverview = pathname === "/admin/mc";
+  if (!isExactOverview) return <Outlet />;
+  return <MCOverview />;
+}
 
 function MCOverview() {
   const { data: products } = useQuery({
