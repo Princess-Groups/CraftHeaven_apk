@@ -621,6 +621,7 @@ export type Database = {
           invoice_no: string | null
           notes: string | null
           purchase_date: string
+          purchase_packing_freight_charge: number
           status: string
           subtotal: number
           supplier_id: string | null
@@ -634,6 +635,7 @@ export type Database = {
           invoice_no?: string | null
           notes?: string | null
           purchase_date?: string
+          purchase_packing_freight_charge?: number
           status?: string
           subtotal?: number
           supplier_id?: string | null
@@ -647,6 +649,7 @@ export type Database = {
           invoice_no?: string | null
           notes?: string | null
           purchase_date?: string
+          purchase_packing_freight_charge?: number
           status?: string
           subtotal?: number
           supplier_id?: string | null
@@ -1831,6 +1834,7 @@ export type Database = {
           _invoice_no?: string
           _items: Json
           _notes?: string
+          _purchase_packing_freight_charge?: number
           _purchase_date?: string
           _supplier_id: string
         }
@@ -1845,6 +1849,7 @@ export type Database = {
           _invoice_no?: string
           _items: Json
           _notes?: string
+          _purchase_packing_freight_charge?: number
           _purchase_date?: string
           _purchase_id: string
           _supplier_id: string

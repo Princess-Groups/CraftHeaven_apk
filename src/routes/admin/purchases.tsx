@@ -47,15 +47,16 @@ type ProductRow = {
   quantity: number;
   unit_price: number;
   total_price: number;
-  purchase_packing_charge: number;
-  purchase_freight_charges: number;
+  purchase_packing_freight_charge: number;
   slot_id: string;
   slot_total_charge: number;
   slot_charge_per_product: number;
   other_charges: number;
   total_unit_cost: number;
   final_purchase_cost: number;
+  retail_profit_pct: number;
   retail_selling_price: number;
+  wholesale_profit_pct: number;
   wholesale_price: number;
   profit_per_piece_pct: number;
   pieces_sold: number;
@@ -102,15 +103,16 @@ const blankRow = (serial: number): ProductRow => ({
   quantity: 1,
   unit_price: 0,
   total_price: 0,
-  purchase_packing_charge: 0,
-  purchase_freight_charges: 0,
+  purchase_packing_freight_charge: 0,
   slot_id: "",
   slot_total_charge: 0,
   slot_charge_per_product: 0,
   other_charges: 0,
   total_unit_cost: 0,
   final_purchase_cost: 0,
+  retail_profit_pct: 0,
   retail_selling_price: 0,
+  wholesale_profit_pct: 0,
   wholesale_price: 0,
   profit_per_piece_pct: 0,
   pieces_sold: 0,
@@ -146,9 +148,20 @@ function calcRow(r: ProductRow): ProductRow {
   }
   const up = Number(r.unit_price) || 0;
   const total_price = qty * up;
-  const total_unit_cost = up + Number(r.purchase_packing_charge) + Number(r.purchase_freight_charges) + Number(r.slot_charge_per_product) + Number(r.other_charges);
+  const total_unit_cost = up + Number(r.purchase_packing_freight_charge) + Number(r.slot_charge_per_product) + Number(r.other_charges);
   const final_purchase_cost = total_unit_cost * qty;
-  const rsp = Number(r.retail_selling_price) || 0;
+
+  // Auto-calculate selling prices from profit percentages when provided
+  const retailProfitPct = Number(r.retail_profit_pct) || 0;
+  const wholesaleProfitPct = Number(r.wholesale_profit_pct) || 0;
+  const retail_selling_price = retailProfitPct > 0 && final_purchase_cost > 0
+    ? Math.round(final_purchase_cost * (1 + retailProfitPct / 100) * 100) / 100
+    : Number(r.retail_selling_price) || 0;
+  const wholesale_price = wholesaleProfitPct > 0 && final_purchase_cost > 0
+    ? Math.round(final_purchase_cost * (1 + wholesaleProfitPct / 100) * 100) / 100
+    : Number(r.wholesale_price) || 0;
+
+  const rsp = retail_selling_price;
   const profit_pct = rsp > 0 && total_unit_cost > 0 ? ((rsp - total_unit_cost) / total_unit_cost) * 100 : 0;
   const pieces = Number(r.pieces_sold) || 0;
   const sold_for_val = Number(r.sold_for) || 0;
@@ -164,6 +177,8 @@ function calcRow(r: ProductRow): ProductRow {
     total_price,
     total_unit_cost,
     final_purchase_cost,
+    retail_selling_price,
+    wholesale_price,
     profit_per_piece_pct: Math.round(profit_pct * 100) / 100,
     total_sold,
     gst_amount: Math.round(gst * 100) / 100,
@@ -485,11 +500,12 @@ function Purchases() {
   const { restock: restockId } = useSearch({ from: "/admin/purchases" });
   useEffect(() => {
     if (!restockId) return;
+    const rid: string = restockId;
     async function loadRestock() {
       const { data: product } = await supabase
         .from("products")
         .select("id,name,barcode,category_id,price,purchase_price,stock,reorder_level,unit,image_urls")
-        .eq("id", restockId)
+        .eq("id", rid)
         .single();
       if (!product) return toast.error("Product not found");
       const newRow = {
@@ -796,12 +812,94 @@ function Purchases() {
     }
   }
 
+  // ---- Submit full purchase to backend (products + slots) ----
+  async function submitPurchase() {
+    if (rows.length === 0) return toast.error("No products to submit");
+    const named = rows.filter((r) => r.name.trim());
+    if (named.length === 0) return toast.error("At least one product must have a name");
+    setSaving(true);
+    try {
+      const recalcRows = recalcAllSlotCharges(rows);
+
+      // Group products by supplier for the purchase record
+      const supplierName = recalcRows.find((r) => r.supplier_name?.trim())?.supplier_name?.trim() || "";
+      let supplierId: string | null = null;
+      if (supplierName) {
+        const { data: existing } = await supabase.from("suppliers").select("id").ilike("name", supplierName).limit(1);
+        if (existing?.length) {
+          supplierId = existing[0].id;
+        } else {
+          const { data: newSup } = await supabase.from("suppliers").insert({ name: supplierName }).select("id").single();
+          if (newSup) {
+            supplierId = newSup.id;
+            qc.invalidateQueries({ queryKey: ["suppliers-lite"] });
+          }
+        }
+      }
+
+      // Calculate total combined packing/freight charge across all products
+      const totalCombinedCharge = recalcRows.reduce((sum, r) => sum + (Number(r.purchase_packing_freight_charge) || 0), 0);
+
+      // Build items JSON for the RPC
+      const items = recalcRows.map((r) => ({
+        product_id: r.id || null,
+        name: r.name.trim(),
+        sku: r.barcode || null,
+        category_id: r.category_id || null,
+        brand_id: null,
+        color: r.colour || null,
+        size: null,
+        unit_cost: Number(r.unit_price) || 0,
+        selling_price: Number(r.retail_selling_price) || 0,
+        quantity: Number(r.quantity) || 1,
+        slot_number: r.slot_id || null,
+      }));
+
+      // Call the create RPC
+      const { data: purchaseId, error: rpcErr } = await supabase.rpc("create_purchase_with_products", {
+        _supplier_id: supplierId ?? "",
+        _invoice_no: recalcRows[0]?.supplier_bill_no || "",
+        _purchase_date: recalcRows[0]?.date || new Date().toISOString().slice(0, 10),
+        _notes: undefined,
+        _items: items,
+        _purchase_packing_freight_charge: totalCombinedCharge,
+      });
+
+      if (rpcErr) throw rpcErr;
+      if (!purchaseId) throw new Error("Failed to create purchase");
+
+      // Persist slot charges via upsert_purchase_slot for each unique slot
+      const slotIds = getSlotIds(recalcRows);
+      for (const slotId of slotIds) {
+        const totalCharge = getSlotTotalCharge(recalcRows, slotId);
+        const { error: slotErr } = await supabase.rpc("upsert_purchase_slot", {
+          _purchase_id: purchaseId,
+          _slot_number: slotId,
+          _total_slot_charge: totalCharge,
+        });
+        if (slotErr) console.error("Slot save error:", slotErr);
+      }
+
+      toast.success(`Purchase submitted! ${recalcRows.length} products saved.`);
+      setRows([]);
+      setActiveDraftId(null);
+      setSlotTotals({});
+      setFormOpen(false);
+      setEditingIdx(null);
+      qc.invalidateQueries();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to submit purchase");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   // ---- Export to CSV ----
   function exportCSV() {
     const headers = [
       "S.No", "Barcode", "Supplier Name", "Supplier Bill No", "Category", "Date",
       "Product Name", "Material", "Colour", "Per Packet Value", "Per Packet Unit", "Total Unit", "Total Unit Type", "Qty", "Unit Price", "Total Price",
-      "Packing Charge", "Freight Charges", "Slot", "Slot Charge (Per Product)", "Other Charges", "Total Unit Cost",
+      "Purchase, Packing & Freight Charges", "Slot", "Slot Charge (Per Product)", "Other Charges", "Total Unit Cost",
       "Final Purchase Cost", "Retail Selling Price", "Wholesale Price", "Profit %",
       "Pieces Sold", "Sold For", "Total Sold", "Min Stock", "Current Stock",
       "Rack Location", "Del Packing Amt", "Del Charge Amt", "Re Stock",
@@ -811,7 +909,7 @@ function Purchases() {
     const csvRows = calculatedRows.map((r) => [
       r.serial, r.barcode, r.supplier_name, r.supplier_bill_no, r.category_id, r.date,
       r.name, r.material, r.colour, r.per_packet_value, r.per_packet_unit, r.total_unit, r.total_unit_type, r.quantity, r.unit_price,
-      r.total_price, r.purchase_packing_charge, r.purchase_freight_charges,
+      r.total_price, r.purchase_packing_freight_charge,
       r.slot_id, r.slot_charge_per_product,
       r.other_charges, r.total_unit_cost, r.final_purchase_cost, r.retail_selling_price,
       r.wholesale_price, r.profit_per_piece_pct, r.pieces_sold, r.sold_for,
@@ -856,8 +954,7 @@ function Purchases() {
           per_packet_unit: cols[9] ?? "Nos",
           quantity: Number(cols[11]) || 1,
           unit_price: Number(cols[12]) || 0,
-          purchase_packing_charge: Number(cols[14]) || 0,
-          purchase_freight_charges: Number(cols[15]) || 0,
+          purchase_packing_freight_charge: (Number(cols[14]) || 0) + (Number(cols[15]) || 0),
           other_charges: Number(cols[16]) || 0,
           retail_selling_price: Number(cols[19]) || 0,
           wholesale_price: Number(cols[20]) || 0,
@@ -896,15 +993,16 @@ function Purchases() {
     { key: "quantity", label: "Quantity", type: "number" },
     { key: "unit_price", label: "Unit Price", type: "number" },
     { key: "total_price", label: "Total Price", type: "number", ro: true },
-    { key: "purchase_packing_charge", label: "Purchase Packing Charge", type: "number" },
-    { key: "purchase_freight_charges", label: "(Transport) Purchase Freight Charges", type: "number" },
+    { key: "purchase_packing_freight_charge", label: "Purchase, Packing & Freight Charges", type: "number" },
     { key: "slot_id", label: "Slot", type: "select-slot" },
     { key: "slot_total_charge", label: "Slot Charges", type: "slot-charge" },
     { key: "other_charges", label: "Other Charges", type: "number" },
     { key: "total_unit_cost", label: "Total Unit Cost", type: "number", ro: true },
     { key: "final_purchase_cost", label: "Final Purchase Cost", type: "number", ro: true },
-    { key: "retail_selling_price", label: "Retail Selling Price", type: "number" },
-    { key: "wholesale_price", label: "Wholesale Price", type: "number" },
+    { key: "retail_profit_pct", label: "Retail Profit %", type: "number" },
+    { key: "retail_selling_price", label: "Retail Selling Price", type: "number", ro: true },
+    { key: "wholesale_profit_pct", label: "Wholesale Profit %", type: "number" },
+    { key: "wholesale_price", label: "Wholesale Selling Price", type: "number", ro: true },
     { key: "profit_per_piece_pct", label: "Profit Per Piece %", type: "number", ro: true },
     { key: "pieces_sold", label: "Number of Pieces Sold", type: "number" },
     { key: "sold_for", label: "Sold For", type: "number" },
@@ -1183,12 +1281,22 @@ function Purchases() {
           />
         </div>
         {rows.length > 0 && (
-          <button
-            onClick={saveAsDraft}
-            className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition"
-          >
-            <Save className="h-3.5 w-3.5" /> Save Draft
-          </button>
+          <>
+            <button
+              onClick={submitPurchase}
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition"
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              {saving ? "Submitting…" : "Submit Purchase"}
+            </button>
+            <button
+              onClick={saveAsDraft}
+              className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition"
+            >
+              <Save className="h-3.5 w-3.5" /> Save Draft
+            </button>
+          </>
         )}
         <button
           onClick={newPurchaseEntry}
@@ -1362,6 +1470,14 @@ function Purchases() {
                 className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition"
               >
                 <Save className="h-3.5 w-3.5" /> Save Draft
+              </button>
+              <button
+                onClick={submitPurchase}
+                disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition"
+              >
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                {saving ? "Submitting…" : "Submit Purchase"}
               </button>
               <button
                 onClick={saveProduct}
