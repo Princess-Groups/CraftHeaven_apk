@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -43,7 +43,12 @@ import {
   Clock,
   CheckCircle2,
   PackageCheck,
+  Target,
+  Pencil,
+  Save,
+  X,
 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 export const Route = createFileRoute("/admin/")({
   head: () => ({ meta: [{ title: "Dashboard — ACH Admin" }] }),
@@ -135,6 +140,25 @@ function Dashboard() {
     queryFn: async () => (await supabase.from("order_items").select("product_name,quantity,unit_price,line_total").limit(500)).data ?? [],
   });
 
+  // ---- Monthly Sales Target (persisted in localStorage) ----
+  const storageKey = "monthly_sales_target";
+  const [monthlyTarget, setMonthlyTarget] = useState<number>(() => {
+    try {
+      return Number(localStorage.getItem(storageKey)) || 0;
+    } catch { return 0; }
+  });
+  const [isEditingTarget, setIsEditingTarget] = useState(false);
+  const [targetDraft, setTargetDraft] = useState(String(monthlyTarget));
+
+  function saveTarget() {
+    const val = Number(targetDraft);
+    if (!isNaN(val) && val >= 0) {
+      setMonthlyTarget(val);
+      localStorage.setItem(storageKey, String(val));
+    }
+    setIsEditingTarget(false);
+  }
+
   // ---- Computed summaries ----
   const summary = useMemo(() => {
     if (!products || !orders || !purchases) return null;
@@ -165,6 +189,29 @@ function Dashboard() {
       totalCategories, totalSuppliers,
     };
   }, [products, orders, purchases, categories, suppliers, monthStart]);
+
+  // ---- Monthly Target metrics ----
+  const targetMetrics = useMemo(() => {
+    if (!summary || monthlyTarget <= 0) return null;
+    const achieved = summary.monthSales;
+    const remaining = Math.max(0, monthlyTarget - achieved);
+    const completionPct = monthlyTarget > 0 ? Math.min((achieved / monthlyTarget) * 100, 100) : 0;
+    const isCompleted = achieved >= monthlyTarget;
+    const aboveTarget = achieved - monthlyTarget;
+    // Default to first product price for unit estimation
+    const defaultPrice = products?.[0]?.price || 0;
+    const unitsRequired = defaultPrice > 0 ? Math.ceil(remaining / defaultPrice) : 0;
+    return {
+      achieved,
+      remaining,
+      completionPct,
+      isCompleted,
+      aboveTarget,
+      defaultPrice,
+      unitsRequired,
+      rawPct: monthlyTarget > 0 ? (achieved / monthlyTarget) * 100 : 0,
+    };
+  }, [summary, monthlyTarget, products]);
 
   // ---- Chart data: Sales by day (last 7 days) ----
   const salesByDay = useMemo(() => {
@@ -269,6 +316,126 @@ function Dashboard() {
       <div>
         <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
         <p className="text-xs text-muted-foreground mt-0.5">Overview of your entire billing & inventory system</p>
+      </div>
+
+      {/* ===== Monthly Sales Target ===== */}
+      <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-emerald-50">
+              <Target className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-foreground">
+                {new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" })} Sales Target
+              </h2>
+              <p className="text-[10px] text-muted-foreground">Track your monthly sales progress</p>
+            </div>
+          </div>
+
+          {/* Inline edit for target */}
+          {isEditingTarget ? (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 rounded-lg border border-border bg-white px-3 py-1.5">
+                <span className="text-xs font-semibold text-muted-foreground">₹</span>
+                <input
+                  type="number"
+                  value={targetDraft}
+                  onChange={(e) => setTargetDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveTarget(); if (e.key === "Escape") setIsEditingTarget(false); }}
+                  className="w-28 bg-transparent text-sm font-bold text-foreground outline-none"
+                  autoFocus
+                  min={0}
+                />
+              </div>
+              <button onClick={saveTarget} className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
+                <Save className="h-4 w-4" />
+              </button>
+              <button onClick={() => setIsEditingTarget(false)} className="grid h-8 w-8 place-items-center rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setTargetDraft(String(monthlyTarget || "")); setIsEditingTarget(true); }}
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft"
+            >
+              <Pencil className="h-3 w-3" />
+              {monthlyTarget > 0 ? `₹${monthlyTarget.toLocaleString("en-IN")}` : "Set Target"}
+            </button>
+          )}
+        </div>
+
+        {monthlyTarget > 0 && targetMetrics ? (
+          <div className="space-y-4">
+            {/* Stats Row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-lg bg-muted/40 px-3 py-2.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Monthly Target</div>
+                <div className="mt-0.5 text-lg font-bold text-foreground">₹{monthlyTarget.toLocaleString("en-IN")}</div>
+              </div>
+              <div className="rounded-lg bg-emerald-50 px-3 py-2.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">Sales Achieved</div>
+                <div className="mt-0.5 text-lg font-bold text-emerald-700">₹{targetMetrics.achieved.toLocaleString("en-IN")}</div>
+              </div>
+              <div className="rounded-lg bg-amber-50 px-3 py-2.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  {targetMetrics.isCompleted ? "Above Target" : "Remaining"}
+                </div>
+                <div className="mt-0.5 text-lg font-bold text-amber-700">
+                  {targetMetrics.isCompleted
+                    ? `₹${targetMetrics.aboveTarget.toLocaleString("en-IN")}`
+                    : `₹${targetMetrics.remaining.toLocaleString("en-IN")}`
+                  }
+                </div>
+              </div>
+              <div className="rounded-lg bg-blue-50 px-3 py-2.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-blue-700">Completion</div>
+                <div className="mt-0.5 text-lg font-bold text-blue-700">{targetMetrics.rawPct.toFixed(2)}%</div>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold text-muted-foreground">Progress</span>
+                <span className="text-[10px] font-bold text-foreground">{targetMetrics.completionPct.toFixed(1)}%</span>
+              </div>
+              <Progress value={targetMetrics.completionPct} className="h-3" />
+            </div>
+
+            {/* Status Message */}
+            <div className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+              targetMetrics.isCompleted ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+            }`}>
+              {targetMetrics.isCompleted ? (
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Monthly Sales Target Completed{targetMetrics.aboveTarget > 0 ? ` — ₹${targetMetrics.aboveTarget.toLocaleString("en-IN")} Above Target` : ""}
+                </span>
+              ) : (
+                <span>₹{targetMetrics.remaining.toLocaleString("en-IN")} remaining to complete the monthly target.</span>
+              )}
+            </div>
+
+            {/* Products/Units Required */}
+            {targetMetrics.defaultPrice > 0 && !targetMetrics.isCompleted && (
+              <div className="rounded-lg bg-primary/5 border border-primary/10 px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <Package className="h-4 w-4 text-primary" />
+                  <div className="text-xs">
+                    <span className="font-bold text-primary">Sell {targetMetrics.unitsRequired} more unit{targetMetrics.unitsRequired !== 1 ? "s" : ""}</span>
+                    <span className="text-muted-foreground"> (₹{targetMetrics.defaultPrice.toLocaleString("en-IN")} each) to complete this month's sales target.</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : monthlyTarget <= 0 ? (
+          <div className="flex items-center justify-center rounded-lg border border-dashed border-border py-6 text-xs text-muted-foreground">
+            Set a monthly sales target to start tracking your progress.
+          </div>
+        ) : null}
       </div>
 
       {/* ===== Summary Cards ===== */}
