@@ -139,16 +139,17 @@ const PAYMENT_METHODS = ["UPI", "CASH", "GPAY", "CARD"] as const;
 
 // ---------- Calculated fields ----------
 function calcRow(r: ProductRow): ProductRow {
-  // Auto-calculate quantity from Total Unit / Per Packet Value when units match and values exist
-  let qty = Number(r.quantity) || 0;
+  // Auto-calculate Total Unit = Quantity × Per Packet Value
+  const qty = Number(r.quantity) || 0;
   const ppv = Number(r.per_packet_value) || 0;
-  const tu = Number(r.total_unit) || 0;
-  if (ppv > 0 && tu > 0 && r.per_packet_unit === r.total_unit_type && r.total_unit_type !== "Nos") {
-    qty = Math.round((tu / ppv) * 100) / 100;
-  }
+  const autoTotalUnit = ppv > 0 ? Math.round(qty * ppv * 100) / 100 : 0;
+  // Use auto-calculated total_unit when per_packet_value is provided; otherwise fall back to manual entry
+  const tu = ppv > 0 ? autoTotalUnit : (Number(r.total_unit) || 0);
+  // Carry over the per packet unit type to total unit type when auto-calculating
+  const autoTotalUnitType = ppv > 0 ? r.per_packet_unit : r.total_unit_type;
   const up = Number(r.unit_price) || 0;
   const total_price = qty * up;
-  const total_unit_cost = up + Number(r.purchase_packing_freight_charge) + Number(r.slot_charge_per_product) + Number(r.other_charges);
+  const total_unit_cost = up + Number(r.purchase_packing_freight_charge) + Number(r.other_charges);
   const final_purchase_cost = total_unit_cost * qty;
 
   // Auto-calculate selling prices from profit percentages when provided
@@ -174,6 +175,8 @@ function calcRow(r: ProductRow): ProductRow {
   return {
     ...r,
     quantity: qty,
+    total_unit: tu,
+    total_unit_type: autoTotalUnitType,
     total_price,
     total_unit_cost,
     final_purchase_cost,
@@ -208,7 +211,8 @@ function recalcSlotCharges(rows: ProductRow[], slotId: string, totalSlotCharge: 
     if (r.slot_id === slotId) {
       idx++;
       const charge = idx === count ? lastProductCharge : perProductRounded;
-      return { ...r, slot_total_charge: totalSlotCharge, slot_charge_per_product: charge };
+      // Auto-reflect slot charge in the Purchase & Freight Charges field
+      return { ...r, slot_total_charge: totalSlotCharge, slot_charge_per_product: charge, purchase_packing_freight_charge: charge };
     }
     return r;
   });
@@ -837,8 +841,10 @@ function Purchases() {
         }
       }
 
-      // Calculate total combined packing/freight charge across all products
-      const totalCombinedCharge = recalcRows.reduce((sum, r) => sum + (Number(r.purchase_packing_freight_charge) || 0), 0);
+      // Calculate total combined packing/freight charge (exclude slot-assigned products to avoid double-counting with slot charges)
+      const totalCombinedCharge = recalcRows
+        .filter((r) => !r.slot_id)
+        .reduce((sum, r) => sum + (Number(r.purchase_packing_freight_charge) || 0), 0);
 
       // Build items JSON for the RPC
       const items = recalcRows.map((r) => ({
@@ -1144,19 +1150,31 @@ function Purchases() {
         );
       case "unit-pair": {
         const unitField = fieldDef.unitField as keyof ProductRow;
+        // Auto-calculated total_unit: read-only when per_packet_value is provided
+        const isAutoTotalUnit = field === "total_unit" && Number(row.per_packet_value) > 0;
         return (
           <div className="flex gap-2">
-            <input
-              type="number"
-              defaultValue={String(row[field] ?? "")}
-              onChange={(e) => {
-                const v = Number(e.target.value) || 0;
-                patchRow(idx, { [field]: v });
-              }}
-              className="flex-1 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
-              step="0.01"
-              placeholder="Value"
-            />
+            {isAutoTotalUnit ? (
+              <input
+                type="number"
+                value={String(row[field] ?? "")}
+                readOnly
+                className="flex-1 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-right outline-none cursor-default"
+                step="0.01"
+              />
+            ) : (
+              <input
+                type="number"
+                defaultValue={String(row[field] ?? "")}
+                onChange={(e) => {
+                  const v = Number(e.target.value) || 0;
+                  patchRow(idx, { [field]: v });
+                }}
+                className="flex-1 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
+                step="0.01"
+                placeholder="Value"
+              />
+            )}
             <select
               value={String(row[unitField] || "Nos")}
               onChange={(e) => patchRow(idx, { [unitField]: e.target.value })}
@@ -1231,6 +1249,22 @@ function Purchases() {
               readOnly
               className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm font-semibold text-right outline-none cursor-default"
             />
+          );
+        }
+        // Auto-read-only for Purchase, Packing & Freight Charges when product is in a slot
+        if (field === "purchase_packing_freight_charge" && row.slot_id) {
+          return (
+            <div className="space-y-1">
+              <input
+                type="number"
+                value={String(row[field] ?? "")}
+                readOnly
+                className="w-full rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-right outline-none cursor-default"
+              />
+              <div className="text-[10px] text-primary font-semibold text-right">
+                Auto from {row.slot_id} • {rows.filter((r) => r.slot_id === row.slot_id).length} product{rows.filter((r) => r.slot_id === row.slot_id).length !== 1 ? "s" : ""}
+              </div>
+            </div>
           );
         }
         return (
@@ -1591,15 +1625,40 @@ function Purchases() {
                   <div className="text-lg font-bold text-foreground">₹{grandTotals.discount.toFixed(2)}</div>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Slot Charges</Label>
-                  <div className="text-lg font-bold text-primary">₹{calculatedRows.reduce((sum, r) => sum + (r.slot_charge_per_product || 0), 0).toFixed(2)}</div>
-                  {getSlotIds(calculatedRows).length > 0 && (
-                    <div className="text-[10px] text-muted-foreground">
-                      {getSlotIds(calculatedRows).length} slot{getSlotIds(calculatedRows).length !== 1 ? "s" : ""}
-                    </div>
-                  )}
+                  <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Slot Charges (Total)</Label>
+                  <div className="text-lg font-bold text-primary">
+                    ₹{getSlotIds(calculatedRows).reduce((sum, slotId) => sum + getSlotTotalCharge(calculatedRows, slotId), 0).toFixed(2)}
+                  </div>
                 </div>
               </div>
+
+              {/* Per-Slot Breakdown */}
+              {getSlotIds(calculatedRows).length > 0 && (
+                <div className="mt-4 pt-3 border-t border-border">
+                  <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+                    Slot-wise Charge Split
+                  </Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {getSlotIds(calculatedRows).map((slotId) => {
+                      const totalCharge = getSlotTotalCharge(calculatedRows, slotId);
+                      const productCount = calculatedRows.filter((r) => r.slot_id === slotId).length;
+                      const perProduct = productCount > 0 ? totalCharge / productCount : 0;
+                      return (
+                        <div key={slotId} className="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-primary uppercase">{slotId}</span>
+                            <span className="text-[10px] text-muted-foreground">{productCount} product{productCount !== 1 ? "s" : ""}</span>
+                          </div>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-xs text-muted-foreground">Total: ₹{totalCharge.toFixed(2)}</span>
+                            <span className="text-xs font-bold text-primary">₹{perProduct.toFixed(2)}/product</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </>
