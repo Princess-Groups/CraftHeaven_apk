@@ -49,6 +49,9 @@ type ProductRow = {
   total_price: number;
   purchase_packing_charge: number;
   purchase_freight_charges: number;
+  slot_id: string;
+  slot_total_charge: number;
+  slot_charge_per_product: number;
   other_charges: number;
   total_unit_cost: number;
   final_purchase_cost: number;
@@ -101,6 +104,9 @@ const blankRow = (serial: number): ProductRow => ({
   total_price: 0,
   purchase_packing_charge: 0,
   purchase_freight_charges: 0,
+  slot_id: "",
+  slot_total_charge: 0,
+  slot_charge_per_product: 0,
   other_charges: 0,
   total_unit_cost: 0,
   final_purchase_cost: 0,
@@ -140,7 +146,7 @@ function calcRow(r: ProductRow): ProductRow {
   }
   const up = Number(r.unit_price) || 0;
   const total_price = qty * up;
-  const total_unit_cost = up + Number(r.purchase_packing_charge) + Number(r.purchase_freight_charges) + Number(r.other_charges);
+  const total_unit_cost = up + Number(r.purchase_packing_charge) + Number(r.purchase_freight_charges) + Number(r.slot_charge_per_product) + Number(r.other_charges);
   const final_purchase_cost = total_unit_cost * qty;
   const rsp = Number(r.retail_selling_price) || 0;
   const profit_pct = rsp > 0 && total_unit_cost > 0 ? ((rsp - total_unit_cost) / total_unit_cost) * 100 : 0;
@@ -163,6 +169,111 @@ function calcRow(r: ProductRow): ProductRow {
     gst_amount: Math.round(gst * 100) / 100,
     total_final: Math.round(total_final * 100) / 100,
   };
+}
+
+// ---------- Slot charge calculation ----------
+// Recalculate per-product slot charges for a given slot.
+// Distributes totalSlotCharge equally across all products in the slot,
+// with any rounding remainder applied to the last product.
+function recalcSlotCharges(rows: ProductRow[], slotId: string, totalSlotCharge: number): ProductRow[] {
+  if (!slotId) return rows;
+  const slotProducts = rows.filter((r) => r.slot_id === slotId);
+  const count = slotProducts.length;
+  if (count === 0) return rows;
+
+  const perProduct = totalSlotCharge / count;
+  const perProductRounded = Math.round(perProduct * 100) / 100;
+  // Calculate the sum of rounded amounts for all but the last product
+  const sumRounded = perProductRounded * (count - 1);
+  // The last product gets the remainder to preserve the exact total
+  const lastProductCharge = Math.round((totalSlotCharge - sumRounded) * 100) / 100;
+
+  let idx = 0;
+  return rows.map((r) => {
+    if (r.slot_id === slotId) {
+      idx++;
+      const charge = idx === count ? lastProductCharge : perProductRounded;
+      return { ...r, slot_total_charge: totalSlotCharge, slot_charge_per_product: charge };
+    }
+    return r;
+  });
+}
+
+// Recalculate all slot charges across all slots in the rows
+function recalcAllSlotCharges(rows: ProductRow[]): ProductRow[] {
+  // Build a map of slot_id -> total_slot_charge from the first product in each slot
+  const slotTotals = new Map<string, number>();
+  for (const r of rows) {
+    if (r.slot_id && !slotTotals.has(r.slot_id)) {
+      slotTotals.set(r.slot_id, r.slot_total_charge || 0);
+    }
+  }
+  let result = rows;
+  Array.from(slotTotals.entries()).forEach(([slotId, totalCharge]) => {
+    result = recalcSlotCharges(result, slotId, totalCharge);
+  });
+  return result;
+}
+
+// Get the list of unique slot IDs from the rows
+function getSlotIds(rows: ProductRow[]): string[] {
+  const seen = new Set<string>();
+  return rows.filter((r) => r.slot_id && !seen.has(r.slot_id) && seen.add(r.slot_id)).map((r) => r.slot_id);
+}
+
+// Get the total charge for a slot (from the first product's slot_total_charge)
+function getSlotTotalCharge(rows: ProductRow[], slotId: string): number {
+  const first = rows.find((r) => r.slot_id === slotId);
+  return first?.slot_total_charge || 0;
+}
+
+// ---------- Draft persistence (localStorage) ----------
+const DRAFTS_KEY = "ach_purchase_drafts";
+
+type DraftEntry = {
+  draft_id: string;
+  created_at: string;
+  updated_at: string;
+  rows: ProductRow[];
+  slot_totals: Record<string, number>;
+  label: string;
+};
+
+function saveDraft(draft: DraftEntry): void {
+  const existing = loadDrafts();
+  const idx = existing.findIndex((d) => d.draft_id === draft.draft_id);
+  draft.updated_at = new Date().toISOString();
+  if (idx >= 0) {
+    existing[idx] = draft;
+  } else {
+    existing.unshift(draft);
+  }
+  localStorage.setItem(DRAFTS_KEY, JSON.stringify(existing));
+}
+
+function loadDrafts(): DraftEntry[] {
+  try {
+    const raw = localStorage.getItem(DRAFTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadDraft(draftId: string): DraftEntry | undefined {
+  return loadDrafts().find((d) => d.draft_id === draftId);
+}
+
+function deleteDraft(draftId: string): void {
+  const existing = loadDrafts().filter((d) => d.draft_id !== draftId);
+  localStorage.setItem(DRAFTS_KEY, JSON.stringify(existing));
+}
+
+function makeDraftLabel(rows: ProductRow[]): string {
+  const firstNamed = rows.find((r) => r.name?.trim());
+  const count = rows.length;
+  if (firstNamed) return `${firstNamed.name}${count > 1 ? ` +${count - 1} more` : ""}`;
+  return `Draft (${count} product${count !== 1 ? "s" : ""})`;
 }
 
 // ---------- Stable Cell component ----------
@@ -362,6 +473,10 @@ function Purchases() {
   const [saving, setSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<DraftEntry[]>([]);
+  const [showDrafts, setShowDrafts] = useState(false);
+  const [slotTotals, setSlotTotals] = useState<Record<string, number>>({});
 
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -420,6 +535,59 @@ function Purchases() {
       ).data ?? [],
   });
 
+  // Load drafts on mount
+  useEffect(() => {
+    setDrafts(loadDrafts());
+  }, []);
+
+  // Save as Draft function
+  const saveAsDraft = useCallback(() => {
+    if (rows.length === 0) return toast.error("No products to save");
+    const draftId = activeDraftId || uid();
+    const draft: DraftEntry = {
+      draft_id: draftId,
+      created_at: activeDraftId ? (drafts.find((d) => d.draft_id === draftId)?.created_at || new Date().toISOString()) : new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      rows: recalcAllSlotCharges(rows),
+      slot_totals: slotTotals,
+      label: makeDraftLabel(rows),
+    };
+    saveDraft(draft);
+    setActiveDraftId(draftId);
+    setDrafts(loadDrafts());
+    toast.success("Draft saved successfully");
+  }, [rows, activeDraftId, drafts, slotTotals]);
+
+  // Load a draft
+  const loadDraftEntry = useCallback((draftId: string) => {
+    const draft = loadDraft(draftId);
+    if (!draft) return toast.error("Draft not found");
+    setRows(draft.rows);
+    setSlotTotals(draft.slot_totals || {});
+    setActiveDraftId(draft.draft_id);
+    setShowDrafts(false);
+    setFormOpen(false);
+    setEditingIdx(null);
+    toast.success("Draft loaded");
+  }, []);
+
+  // Delete a draft
+  const deleteDraftEntry = useCallback((draftId: string) => {
+    deleteDraft(draftId);
+    setDrafts(loadDrafts());
+    if (activeDraftId === draftId) setActiveDraftId(null);
+    toast.success("Draft deleted");
+  }, [activeDraftId]);
+
+  // New Purchase Entry (clear everything)
+  const newPurchaseEntry = useCallback(() => {
+    setRows([]);
+    setActiveDraftId(null);
+    setSlotTotals({});
+    setFormOpen(false);
+    setEditingIdx(null);
+  }, []);
+
   const filteredProducts = useMemo(() => {
     if (!searchQ.trim()) return [];
     const q = searchQ.toLowerCase();
@@ -447,7 +615,47 @@ function Purchases() {
   }, [calculatedRows]);
 
   const patchRow = useCallback((idx: number, patch: Partial<ProductRow>) => {
-    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+    setRows((prev) => {
+      let next = prev.map((r, i) => (i === idx ? { ...r, ...patch } : r));
+      // Handle slot changes: recalculate charges for affected slots
+      if (patch.slot_id !== undefined || patch.slot_total_charge !== undefined) {
+        const row = prev[idx];
+        const newSlotId = patch.slot_id !== undefined ? patch.slot_id : row.slot_id;
+        const newTotalCharge = patch.slot_total_charge !== undefined ? patch.slot_total_charge : row.slot_total_charge;
+
+        // If slot_id changed, recalculate both old and new slots
+        if (patch.slot_id !== undefined && patch.slot_id !== row.slot_id) {
+          // Recalculate old slot if it exists
+          if (row.slot_id) {
+            const oldProducts = next.filter((r) => r.slot_id === row.slot_id);
+            if (oldProducts.length > 0) {
+              // Use the existing total charge from the first remaining product
+              const oldTotalCharge = oldProducts[0].slot_total_charge || 0;
+              next = recalcSlotCharges(next, row.slot_id, oldTotalCharge);
+            }
+          }
+          // Update slot totals map
+          if (newSlotId) {
+            // Check if this is a new slot or existing
+            const existingProducts = next.filter((r) => r.slot_id === newSlotId);
+            if (existingProducts.length <= 1) {
+              // First product in this slot - set the total charge
+              next = recalcSlotCharges(next, newSlotId, newTotalCharge || 0);
+            } else {
+              // Existing slot - recalculate with current total from first product
+              const existingTotal = existingProducts[0].slot_total_charge || 0;
+              next = recalcSlotCharges(next, newSlotId, existingTotal);
+            }
+          }
+        } else if (patch.slot_total_charge !== undefined) {
+          // Only total charge changed - recalculate this slot
+          if (newSlotId) {
+            next = recalcSlotCharges(next, newSlotId, newTotalCharge || 0);
+          }
+        }
+      }
+      return next;
+    });
   }, []);
 
   useEffect(() => { _patchRowRef = patchRow; }, [patchRow]);
@@ -483,10 +691,10 @@ function Purchases() {
   }
 
   function cancelForm() {
-    // Remove blank row if it was a new product with no name
+    // Remove blank row if it was a new product with no name (only if no slot assigned)
     if (editingIdx !== null) {
       const row = rows[editingIdx];
-      if (row && !row.name.trim() && !row.id) {
+      if (row && !row.name.trim() && !row.id && !row.slot_id) {
         setRows((prev) => {
           const next = prev.filter((_, i) => i !== editingIdx);
           return next.map((r, i) => ({ ...r, serial: i + 1 }));
@@ -499,8 +707,20 @@ function Purchases() {
 
   function deleteRow(idx: number) {
     setRows((prev) => {
-      const next = prev.filter((_, i) => i !== idx);
-      return next.map((r, i) => ({ ...r, serial: i + 1 }));
+      const deletedRow = prev[idx];
+      let next = prev.filter((_, i) => i !== idx);
+      next = next.map((r, i) => ({ ...r, serial: i + 1 }));
+
+      // Recalculate slot charges for the deleted row's slot
+      if (deletedRow?.slot_id) {
+        const slotProducts = next.filter((r) => r.slot_id === deletedRow.slot_id);
+        if (slotProducts.length > 0) {
+          // Use the existing total charge from the first remaining product
+          const totalCharge = slotProducts[0].slot_total_charge || 0;
+          next = recalcSlotCharges(next, deletedRow.slot_id, totalCharge);
+        }
+      }
+      return next;
     });
     if (editingIdx === idx) {
       setFormOpen(false);
@@ -581,7 +801,7 @@ function Purchases() {
     const headers = [
       "S.No", "Barcode", "Supplier Name", "Supplier Bill No", "Category", "Date",
       "Product Name", "Material", "Colour", "Per Packet Value", "Per Packet Unit", "Total Unit", "Total Unit Type", "Qty", "Unit Price", "Total Price",
-      "Packing Charge", "Freight Charges", "Other Charges", "Total Unit Cost",
+      "Packing Charge", "Freight Charges", "Slot", "Slot Charge (Per Product)", "Other Charges", "Total Unit Cost",
       "Final Purchase Cost", "Retail Selling Price", "Wholesale Price", "Profit %",
       "Pieces Sold", "Sold For", "Total Sold", "Min Stock", "Current Stock",
       "Rack Location", "Del Packing Amt", "Del Charge Amt", "Re Stock",
@@ -592,6 +812,7 @@ function Purchases() {
       r.serial, r.barcode, r.supplier_name, r.supplier_bill_no, r.category_id, r.date,
       r.name, r.material, r.colour, r.per_packet_value, r.per_packet_unit, r.total_unit, r.total_unit_type, r.quantity, r.unit_price,
       r.total_price, r.purchase_packing_charge, r.purchase_freight_charges,
+      r.slot_id, r.slot_charge_per_product,
       r.other_charges, r.total_unit_cost, r.final_purchase_cost, r.retail_selling_price,
       r.wholesale_price, r.profit_per_piece_pct, r.pieces_sold, r.sold_for,
       r.total_sold, r.minimum_stock, r.current_stock, r.rack_location,
@@ -659,7 +880,7 @@ function Purchases() {
     e.target.value = "";
   }
 
-  // 38-field form definitions in exact user-specified sequence
+  // 40-field form definitions in exact user-specified sequence
   const FORM_FIELDS: { key: string; label: string; type: string; ro?: boolean; unitField?: string }[] = [
     { key: "barcode", label: "Barcode", type: "text" },
     { key: "supplier_name", label: "Supplier Name", type: "select-supplier" },
@@ -677,6 +898,8 @@ function Purchases() {
     { key: "total_price", label: "Total Price", type: "number", ro: true },
     { key: "purchase_packing_charge", label: "Purchase Packing Charge", type: "number" },
     { key: "purchase_freight_charges", label: "(Transport) Purchase Freight Charges", type: "number" },
+    { key: "slot_id", label: "Slot", type: "select-slot" },
+    { key: "slot_total_charge", label: "Slot Charges", type: "slot-charge" },
     { key: "other_charges", label: "Other Charges", type: "number" },
     { key: "total_unit_cost", label: "Total Unit Cost", type: "number", ro: true },
     { key: "final_purchase_cost", label: "Final Purchase Cost", type: "number", ro: true },
@@ -730,6 +953,93 @@ function Purchases() {
             ))}
           </select>
         );
+      case "select-slot": {
+        const existingSlots = getSlotIds(rows);
+        const currentSlotId = String(row.slot_id || "");
+        const isFirstInSlot = currentSlotId && rows.filter((r) => r.slot_id === currentSlotId).length <= 1;
+        return (
+          <div className="flex gap-2">
+            <select
+              value={currentSlotId}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "__new__") {
+                  // Create new slot
+                  const newSlotNum = existingSlots.length + 1;
+                  const newSlotId = `slot-${newSlotNum}`;
+                  patchRow(idx, { slot_id: newSlotId, slot_total_charge: 0, slot_charge_per_product: 0 });
+                } else {
+                  patchRow(idx, { slot_id: val });
+                }
+              }}
+              className="flex-1 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            >
+              <option value="">— no slot —</option>
+              {existingSlots.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+              <option value="__new__">+ Create New Slot</option>
+            </select>
+            {currentSlotId && (
+              <span className="flex items-center gap-1 rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary whitespace-nowrap">
+                {currentSlotId}
+              </span>
+            )}
+          </div>
+        );
+      }
+      case "slot-charge": {
+        const slotId = String(row.slot_id || "");
+        if (!slotId) {
+          return (
+            <input
+              type="number"
+              value=""
+              disabled
+              placeholder="Select a slot first"
+              className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-right outline-none cursor-not-allowed text-muted-foreground"
+            />
+          );
+        }
+        // Check if this is the first product in the slot
+        const productsInSlot = rows.filter((r) => r.slot_id === slotId);
+        const isFirstProduct = productsInSlot.length <= 1 || productsInSlot[0]._rowId === row._rowId;
+        if (isFirstProduct) {
+          // First product: allow manual entry of total slot charge
+          return (
+            <div className="space-y-1">
+              <input
+                type="number"
+                defaultValue={String(row.slot_total_charge || "")}
+                onChange={(e) => {
+                  const v = Number(e.target.value) || 0;
+                  patchRow(idx, { slot_total_charge: v });
+                }}
+                className="w-full rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right font-semibold"
+                step="0.01"
+                placeholder="Total slot charge"
+              />
+              <div className="text-[10px] text-muted-foreground text-right">
+                Per product: ₹{row.slot_charge_per_product?.toFixed(2) || "0.00"} ({productsInSlot.length} product{productsInSlot.length !== 1 ? "s" : ""})
+              </div>
+            </div>
+          );
+        }
+        // Subsequent products: show auto-calculated amount (read-only)
+        return (
+          <div className="space-y-1">
+            <input
+              type="number"
+              value={String(row.slot_charge_per_product?.toFixed(2) || "")}
+              readOnly
+              className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm font-semibold text-right outline-none cursor-default"
+            />
+            <div className="text-[10px] text-primary font-semibold text-right">
+              Auto-calculated • {productsInSlot.length} products in {slotId}
+            </div>
+          </div>
+        );
+      }
       case "select-unit":
         return (
           <UnitCell row={row} field={field} options={UNITS} idx={idx} />
@@ -855,7 +1165,14 @@ function Purchases() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-bold text-foreground flex-1">Purchase Entry</h1>
+        <h1 className="text-xl font-bold text-foreground flex-1">
+          Purchase Entry
+          {activeDraftId && (
+            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 uppercase tracking-wider">
+              Draft
+            </span>
+          )}
+        </h1>
         <div className="flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-1.5 shadow-sm">
           <Search className="h-4 w-4 text-muted-foreground/70" />
           <input
@@ -865,6 +1182,20 @@ function Purchases() {
             className="bg-transparent text-sm outline-none w-48"
           />
         </div>
+        {rows.length > 0 && (
+          <button
+            onClick={saveAsDraft}
+            className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition"
+          >
+            <Save className="h-3.5 w-3.5" /> Save Draft
+          </button>
+        )}
+        <button
+          onClick={newPurchaseEntry}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft"
+        >
+          <Plus className="h-3.5 w-3.5" /> New Entry
+        </button>
         <label className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-muted-foreground cursor-pointer hover:bg-secondary-soft">
           <Upload className="h-3.5 w-3.5" /> Import CSV
           <input type="file" accept=".csv" className="sr-only" onChange={importCSV} />
@@ -882,6 +1213,51 @@ function Purchases() {
           <Search className="h-3.5 w-3.5" /> Refresh
         </button>
       </div>
+
+      {/* Drafts Panel */}
+      {drafts.length > 0 && !formOpen && (
+        <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
+          <button
+            onClick={() => setShowDrafts(!showDrafts)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft/30 transition"
+          >
+            <span className="flex items-center gap-2">
+              <Save className="h-3.5 w-3.5" />
+              Saved Drafts ({drafts.length})
+            </span>
+            <span className="text-[10px]">{showDrafts ? "▲ Hide" : "▼ Show"}</span>
+          </button>
+          {showDrafts && (
+            <div className="border-t border-border divide-y divide-border/50">
+              {drafts.map((d) => (
+                <div key={d.draft_id} className="flex items-center justify-between px-4 py-2.5 hover:bg-secondary-soft/20 transition">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-foreground truncate">{d.label}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {d.rows.length} product{d.rows.length !== 1 ? "s" : ""} · Updated {new Date(d.updated_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => loadDraftEntry(d.draft_id)}
+                      className="rounded-lg bg-primary/10 px-3 py-1 text-[10px] font-bold text-primary hover:bg-primary/20 transition"
+                    >
+                      Load & Edit
+                    </button>
+                    <button
+                      onClick={() => deleteDraftEntry(d.draft_id)}
+                      className="rounded-lg p-1 hover:bg-rose-50 transition"
+                      title="Delete draft"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Product search results dropdown */}
       {searchQ.trim() && filteredProducts.length > 0 && (
@@ -936,6 +1312,11 @@ function Purchases() {
               </button>
               <h2 className="text-sm font-bold text-primary">
                 {activeRow.id ? `Edit Product ${String(activeRow.serial).padStart(2, "0")}` : `Add Product ${String(activeRow.serial).padStart(2, "0")}`}
+                {activeRow.slot_id && (
+                  <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                    {activeRow.slot_id}
+                  </span>
+                )}
               </h2>
             </div>
             <div className="flex items-center gap-2">
@@ -977,6 +1358,12 @@ function Purchases() {
                 Cancel
               </button>
               <button
+                onClick={() => { saveAsDraft(); setFormOpen(false); setEditingIdx(null); }}
+                className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition"
+              >
+                <Save className="h-3.5 w-3.5" /> Save Draft
+              </button>
+              <button
                 onClick={saveProduct}
                 disabled={saving || !activeRow.name.trim()}
                 className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50 transition"
@@ -1008,6 +1395,8 @@ function Purchases() {
                   <tr className="bg-muted">
                     <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center border-b border-border w-12">#</th>
                     <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-left border-b border-border">Product Name</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center border-b border-border w-20">Slot</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-right border-b border-border w-24">Slot Charge</th>
                     <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center border-b border-border w-20">Actions</th>
                   </tr>
                 </thead>
@@ -1022,12 +1411,27 @@ function Purchases() {
                       <td className="px-3 py-2.5 text-xs font-semibold text-foreground">
                         {row.name || <span className="text-muted-foreground italic">No name</span>}
                       </td>
+                      <td className="px-3 py-2.5 text-center">
+                        {row.slot_id ? (
+                          <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                            {row.slot_id}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground/50">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-xs font-semibold text-foreground">
+                        {row.slot_charge_per_product > 0 ? (
+                          <span>₹{row.slot_charge_per_product.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-muted-foreground/50">—</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={(e) => { e.stopPropagation(); deleteRow(idx); }}
-                            disabled={calculatedRows.length <= 1}
-                            className="rounded p-1 hover:bg-rose-50 disabled:opacity-30"
+                            className="rounded p-1 hover:bg-rose-50"
                             title="Delete product"
                           >
                             <Trash2 className="h-3.5 w-3.5 text-rose-600" />
@@ -1049,7 +1453,7 @@ function Purchases() {
           {/* Grand Totals */}
           {calculatedRows.length > 0 && (
             <div className="rounded-xl border border-border bg-white shadow-sm p-4">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="space-y-1">
                   <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Price</Label>
                   <div className="text-lg font-bold text-foreground">₹{grandTotals.total_price.toFixed(2)}</div>
@@ -1069,6 +1473,15 @@ function Purchases() {
                 <div className="space-y-1">
                   <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Discount</Label>
                   <div className="text-lg font-bold text-foreground">₹{grandTotals.discount.toFixed(2)}</div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Slot Charges</Label>
+                  <div className="text-lg font-bold text-primary">₹{calculatedRows.reduce((sum, r) => sum + (r.slot_charge_per_product || 0), 0).toFixed(2)}</div>
+                  {getSlotIds(calculatedRows).length > 0 && (
+                    <div className="text-[10px] text-muted-foreground">
+                      {getSlotIds(calculatedRows).length} slot{getSlotIds(calculatedRows).length !== 1 ? "s" : ""}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

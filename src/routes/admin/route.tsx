@@ -25,6 +25,7 @@ import {
   ChevronDown,
   ChevronRight,
   LayoutGrid,
+  LayoutDashboard,
   PackageSearch,
   DollarSign,
   Tag,
@@ -64,6 +65,7 @@ export const Route = createFileRoute("/admin")({
 });
 
 const NAV: { to: string; label: string; icon: React.ElementType; exact?: boolean }[] = [
+  { to: "/admin/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/admin/purchases", label: "Purchase Entry", icon: ShoppingCart, exact: true },
   { to: "/admin/billing", label: "Billing", icon: ScanBarcode },
   { to: "/admin/orders", label: "Orders", icon: ClipboardList },

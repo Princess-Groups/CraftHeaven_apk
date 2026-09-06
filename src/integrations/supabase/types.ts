@@ -528,6 +528,8 @@ export type Database = {
           product_id: string
           purchase_id: string
           quantity: number
+          slot_charge_per_product: number
+          slot_number: string | null
           unit: string
           unit_cost: number
         }
@@ -537,6 +539,8 @@ export type Database = {
           product_id: string
           purchase_id: string
           quantity: number
+          slot_charge_per_product?: number
+          slot_number?: string | null
           unit?: string
           unit_cost: number
         }
@@ -546,6 +550,8 @@ export type Database = {
           product_id?: string
           purchase_id?: string
           quantity?: number
+          slot_charge_per_product?: number
+          slot_number?: string | null
           unit?: string
           unit_cost?: number
         }
@@ -566,6 +572,47 @@ export type Database = {
           },
         ]
       }
+      purchase_slots: {
+        Row: {
+          created_at: string
+          id: string
+          per_product_charge: number
+          product_count: number
+          purchase_id: string
+          slot_number: string
+          total_slot_charge: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          per_product_charge?: number
+          product_count?: number
+          purchase_id: string
+          slot_number: string
+          total_slot_charge?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          per_product_charge?: number
+          product_count?: number
+          purchase_id?: string
+          slot_number?: string
+          total_slot_charge?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_slots_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchases: {
         Row: {
           created_at: string
@@ -574,6 +621,7 @@ export type Database = {
           invoice_no: string | null
           notes: string | null
           purchase_date: string
+          status: string
           subtotal: number
           supplier_id: string | null
           tax: number
@@ -586,6 +634,7 @@ export type Database = {
           invoice_no?: string | null
           notes?: string | null
           purchase_date?: string
+          status?: string
           subtotal?: number
           supplier_id?: string | null
           tax?: number
@@ -598,6 +647,7 @@ export type Database = {
           invoice_no?: string | null
           notes?: string | null
           purchase_date?: string
+          status?: string
           subtotal?: number
           supplier_id?: string | null
           tax?: number
@@ -1800,6 +1850,25 @@ export type Database = {
           _supplier_id: string
         }
         Returns: boolean
+      }
+      upsert_purchase_slot: {
+        Args: {
+          _purchase_id: string
+          _slot_number: string
+          _total_slot_charge: number
+        }
+        Returns: string
+      }
+      get_purchase_slot_summary: {
+        Args: {
+          _purchase_id: string
+        }
+        Returns: {
+          slot_number: string
+          total_slot_charge: number
+          product_count: number
+          per_product_charge: number
+        }[]
       }
       match_or_create_product: {
         Args: {

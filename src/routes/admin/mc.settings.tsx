@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
-import { Sliders, Save, Loader2 } from "lucide-react";
+import { Sliders, Save, Loader2, Store } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/mc/settings")({
@@ -68,6 +68,13 @@ function MCChannelSettings() {
       </div>
 
       <div className="space-y-4">
+        {(channels ?? []).length === 0 && (
+          <div className="rounded-xl border border-dashed border-border bg-white/50 py-16 text-center">
+            <Store className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
+            <p className="text-sm font-semibold text-foreground">No Channels Configured</p>
+            <p className="text-xs text-muted-foreground mt-1">Add marketplace channels from the Marketplace Integration page to configure their sync settings here.</p>
+          </div>
+        )}
         {(channels ?? []).map((ch) => {
           const data = getEdit(ch.id, channels);
           const hasChanges = !!edits[ch.id];
