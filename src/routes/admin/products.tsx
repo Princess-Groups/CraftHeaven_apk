@@ -1,17 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Plus, Edit3, Trash2, Search, Upload, Image, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { uploadProductImage, deleteProductImages } from "@/lib/upload";
+import { SearchableSelect, SearchableProductInput } from "@/components/ui/searchable-select";
+import type { SearchableSelectOption } from "@/components/ui/searchable-select";
 
 export const Route = createFileRoute("/admin/products")({
   head: () => ({ meta: [{ title: "Products — ACH Admin" }] }),
   component: Products,
 });
 
-type ColorVariation = { color: string; image_url: string };
+type ColorVariation = {
+  color: string;
+  color_code: string;
+  image_url: string;
+  quantity: number;
+  sold: number;
+  remaining: number;
+};
 
 const UNITS = ["Nos", "KG", "G", "L", "ML", "M", "CM"] as const;
 
@@ -59,13 +68,46 @@ function Products() {
     queryFn: async () => (await supabase.from("categories").select("id,name")).data ?? [],
   });
 
+  // Category options formatted for SearchableSelect
+  const categoryOptions: SearchableSelectOption[] = useMemo(
+    () => (categories ?? []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })),
+    [categories],
+  );
+
+  // Products filtered by the currently selected category (for Product Name search)
+  const selectedCategoryId = editing?.category_id ?? null;
+  const { data: categoryProducts } = useQuery({
+    queryKey: ["category-products", selectedCategoryId],
+    queryFn: async () => {
+      if (!selectedCategoryId) return [];
+      const { data } = await supabase
+        .from("products")
+        .select("id,name")
+        .eq("category_id", selectedCategoryId)
+        .order("name");
+      return (data ?? []) as { id: string; name: string }[];
+    },
+    enabled: !!selectedCategoryId,
+  });
+
+  // Product options formatted for SearchableProductInput
+  const productOptions: SearchableSelectOption[] = useMemo(
+    () =>
+      (categoryProducts ?? []).map((p) => ({ id: p.id, name: p.name })),
+    [categoryProducts],
+  );
+
   function mapVariations(v: unknown): ColorVariation[] {
     if (!Array.isArray(v)) return [];
     return (v as any[])
       .filter((x) => x && typeof x === "object")
       .map((x) => ({
         color: String(x.color ?? ""),
+        color_code: String(x.color_code ?? ""),
         image_url: String(x.image_url ?? ""),
+        quantity: Number(x.quantity) || 0,
+        sold: Number(x.sold) || 0,
+        remaining: Number(x.remaining) || 0,
       }));
   }
 
@@ -222,26 +264,35 @@ function Products() {
                       </span>
                     ) : null}
                     {mapVariations(p.color_variations)
-                      .filter((v) => v.color)
+                      .filter((v) => v.color || v.color_code)
                       .slice(0, 3)
-                      .map((v) => (
-                        <span
-                          key={v.color}
-                          className="flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"
-                        >
-                          {v.image_url ? (
-                            <img
-                              src={v.image_url}
-                              alt=""
-                              className="h-3 w-3 rounded-full object-cover"
-                            />
-                          ) : null}
-                          {v.color}
-                        </span>
-                      ))}
-                    {mapVariations(p.color_variations).filter((v) => v.color).length > 3 ? (
+                      .map((v) => {
+                        const rem = v.remaining ?? (v.quantity - v.sold);
+                        const isOut = rem <= 0 && v.quantity > 0;
+                        const isLow = rem > 0 && rem <= 2;
+                        return (
+                          <span
+                            key={v.color + v.color_code}
+                            className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                              isOut ? "bg-rose-50 text-rose-700" : isLow ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
+                            }`}
+                          >
+                            {v.image_url ? (
+                              <img
+                                src={v.image_url}
+                                alt=""
+                                className="h-3 w-3 rounded-full object-cover"
+                              />
+                            ) : null}
+                            {v.color || v.color_code}
+                            {v.color_code ? <span className="opacity-60">({v.color_code})</span> : null}
+                            {v.quantity > 0 ? <span className="opacity-60">·{rem}</span> : null}
+                          </span>
+                        );
+                      })}
+                    {mapVariations(p.color_variations).filter((v) => v.color || v.color_code).length > 3 ? (
                       <span className="text-[10px] text-muted-foreground/70">
-                        +{mapVariations(p.color_variations).filter((v) => v.color).length - 3}
+                        +{mapVariations(p.color_variations).filter((v) => v.color || v.color_code).length - 3}
                       </span>
                     ) : null}
                   </div>
@@ -310,12 +361,24 @@ function Products() {
               </button>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Name" className="col-span-2">
-                <input
+              <Field label="Product Name" className="col-span-2">
+                <SearchableProductInput
+                  options={productOptions}
                   value={editing.name ?? ""}
-                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                  className={inputCls}
+                  onChange={(val) => setEditing({ ...editing, name: val })}
+                  placeholder={
+                    selectedCategoryId
+                      ? "Search products in this category…"
+                      : "Type a product name…"
+                  }
                 />
+                {selectedCategoryId && (
+                  <span className="mt-1 block text-[10px] text-muted-foreground/70">
+                    {productOptions.length > 0
+                      ? `${productOptions.length} product(s) in this category — type to search`
+                      : "No existing products in this category — type a new name"}
+                  </span>
+                )}
               </Field>
               <Field label="SKU">
                 <input
@@ -450,18 +513,14 @@ function Products() {
                 />
               </Field>
               <Field label="Category">
-                <select
-                  value={editing.category_id ?? ""}
-                  onChange={(e) => setEditing({ ...editing, category_id: e.target.value })}
-                  className={inputCls}
-                >
-                  <option value="">— none —</option>
-                  {(categories ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  options={categoryOptions}
+                  value={editing.category_id ?? null}
+                  onChange={(val) => setEditing({ ...editing, category_id: val ?? "" })}
+                  placeholder="— none —"
+                  searchPlaceholder="Search categories…"
+                  emptyMessage="No matching category"
+                />
               </Field>
               <Field label="Product Image" className="col-span-2">
                 <div className="space-y-2">
@@ -551,13 +610,17 @@ function Products() {
                 </div>
               </Field>
 
-              {/* Color variations — each with its own photo */}
+              {/* Color variations — each with its own photo, color code, and stock */}
               <Field
-                label="Color Variations (each colour can carry its own photo)"
+                label="Color Variants (with color code & stock tracking)"
                 className="col-span-2"
               >
                 <div className="space-y-2">
-                  {mapVariations(editing.color_variations).map((v, vi) => (
+                  {mapVariations(editing.color_variations).map((v, vi) => {
+                    const rem = v.remaining ?? (v.quantity - v.sold);
+                    const isOut = rem <= 0 && v.quantity > 0;
+                    const isLow = rem > 0 && rem <= 2;
+                    return (
                     <div
                       key={vi}
                       className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted p-2"
@@ -567,9 +630,42 @@ function Products() {
                         onChange={(e) =>
                           setEditing(upsertVariation({ ...editing }, vi, { color: e.target.value }))
                         }
-                        className={`${inputCls} max-w-[140px]`}
-                        placeholder={`Colour ${vi + 1} (e.g. Pink)`}
+                        className={`${inputCls} max-w-[120px]`}
+                        placeholder="Color Name"
                       />
+                      <input
+                        value={v.color_code}
+                        onChange={(e) =>
+                          setEditing(upsertVariation({ ...editing }, vi, { color_code: e.target.value }))
+                        }
+                        className={`${inputCls} max-w-[100px]`}
+                        placeholder="Code (e.g. WH01)"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        value={v.quantity || ""}
+                        onChange={(e) =>
+                          setEditing(upsertVariation({ ...editing }, vi, { quantity: Number(e.target.value) || 0 }))
+                        }
+                        className={`${inputCls} max-w-[80px] text-right`}
+                        placeholder="Qty"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        value={v.sold || ""}
+                        onChange={(e) =>
+                          setEditing(upsertVariation({ ...editing }, vi, { sold: Number(e.target.value) || 0 }))
+                        }
+                        className={`${inputCls} max-w-[80px] text-right`}
+                        placeholder="Sold"
+                      />
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                        isOut ? "bg-rose-50 text-rose-700" : isLow ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
+                      }`}>
+                        {isOut ? "Out of stock" : isLow ? `Low: ${rem}` : `Bal: ${rem}`}
+                      </span>
                       {v.image_url ? (
                         <img
                           src={v.image_url}
@@ -624,14 +720,15 @@ function Products() {
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                   <button
                     onClick={() =>
                       setEditing({
                         ...editing,
                         color_variations: [
                           ...mapVariations(editing.color_variations),
-                          { color: "", image_url: "" },
+                          { color: "", color_code: "", image_url: "", quantity: 0, sold: 0, remaining: 0 },
                         ],
                       })
                     }

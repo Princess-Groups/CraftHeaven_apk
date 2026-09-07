@@ -104,10 +104,10 @@ function Dashboard() {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-  // Products
+  // Products (with color_variations for variant stats)
   const { data: products } = useQuery({
     queryKey: ["dash-products"],
-    queryFn: async () => (await supabase.from("products").select("id,stock,reorder_level,price,purchase_price,name,created_at,is_available").order("created_at", { ascending: false })).data ?? [],
+    queryFn: async () => (await supabase.from("products").select("id,stock,reorder_level,price,purchase_price,name,created_at,is_available,color_variations,image_urls").order("created_at", { ascending: false })).data ?? [],
   });
 
   // Orders
@@ -182,11 +182,38 @@ function Dashboard() {
     const totalCategories = categories?.length || 0;
     const totalSuppliers = suppliers?.length || 0;
 
+    // Variant-level stats
+    let totalVariants = 0;
+    let totalVariantPurchased = 0;
+    let totalVariantSold = 0;
+    let totalVariantRemaining = 0;
+    let lowStockVariants = 0;
+    let outOfStockVariants = 0;
+    for (const p of products) {
+      const vars = Array.isArray(p.color_variations) ? (p.color_variations as any[]) : [];
+      for (const v of vars) {
+        if (!v || typeof v !== "object") continue;
+        const qty = Number(v.quantity) || 0;
+        const sold = Number(v.sold) || 0;
+        const remaining = Number(v.remaining ?? qty - sold);
+        if (qty > 0) {
+          totalVariants++;
+          totalVariantPurchased += qty;
+          totalVariantSold += sold;
+          totalVariantRemaining += remaining;
+          if (remaining <= 0) outOfStockVariants++;
+          else if (remaining <= 2) lowStockVariants++;
+        }
+      }
+    }
+
     return {
       totalProducts, totalStock, stockValue, lowStock, outOfStock,
       totalOrders, totalSales, monthSales,
       totalPurchases, totalPurchaseValue, monthPurchaseValue,
       totalCategories, totalSuppliers,
+      totalVariants, totalVariantPurchased, totalVariantSold, totalVariantRemaining,
+      lowStockVariants, outOfStockVariants,
     };
   }, [products, orders, purchases, categories, suppliers, monthStart]);
 
@@ -476,6 +503,27 @@ function Dashboard() {
           link="/admin/inventory"
           subtitle={`${summary.totalStock.toLocaleString("en-IN")} units in stock`}
         />
+        {summary.totalVariants > 0 && (
+          <>
+            <SummaryCard
+              title="Color Variants"
+              value={summary.totalVariants.toLocaleString("en-IN")}
+              icon={Package}
+              color="text-emerald-700"
+              bgColor="bg-emerald-50"
+              link="/admin/inventory"
+              subtitle={`${summary.totalVariantRemaining} remaining`}
+            />
+            <SummaryCard
+              title="Variant Stock"
+              value={`${summary.totalVariantPurchased.toLocaleString("en-IN")} / ${summary.totalVariantSold.toLocaleString("en-IN")}`}
+              icon={Warehouse}
+              color="text-blue-700"
+              bgColor="bg-blue-50"
+              subtitle="Purchased / Sold"
+            />
+          </>
+        )}
         <SummaryCard
           title="Categories"
           value={summary.totalCategories.toLocaleString("en-IN")}
@@ -495,7 +543,7 @@ function Dashboard() {
       </div>
 
       {/* ===== Alert Cards ===== */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <SummaryCard
           title="Low Stock Alert"
           value={summary.lowStock.toLocaleString("en-IN")}
@@ -514,6 +562,26 @@ function Dashboard() {
           link="/admin/inventory"
           subtitle="Products with zero stock"
         />
+        {summary.totalVariants > 0 && (
+          <>
+            <SummaryCard
+              title="Low Stock Variants"
+              value={summary.lowStockVariants.toLocaleString("en-IN")}
+              icon={AlertTriangle}
+              color="text-amber-600"
+              bgColor="bg-amber-50"
+              subtitle="Variants with ≤2 remaining"
+            />
+            <SummaryCard
+              title="Out of Stock Variants"
+              value={summary.outOfStockVariants.toLocaleString("en-IN")}
+              icon={XCircle}
+              color="text-rose-600"
+              bgColor="bg-rose-50"
+              subtitle="Variants with 0 remaining"
+            />
+          </>
+        )}
         <SummaryCard
           title="Stock Value"
           value={formatCurrency(summary.stockValue)}

@@ -35,7 +35,7 @@ function Inventory() {
       (
         await supabase
           .from("products")
-          .select("id,name,stock,unit,reorder_level,is_available,sku,barcode,purchase_price,price,category_id,image_urls,categories(name)")
+          .select("id,name,stock,unit,reorder_level,is_available,sku,barcode,purchase_price,price,category_id,image_urls,color_variations,categories(name)")
           .order("stock", { ascending: true })
       ).data ?? [],
   });
@@ -68,7 +68,10 @@ function Inventory() {
           p.name?.toLowerCase().includes(q) ||
           p.barcode?.toLowerCase().includes(q) ||
           p.sku?.toLowerCase().includes(q) ||
-          p.categories?.name?.toLowerCase().includes(q),
+          p.categories?.name?.toLowerCase().includes(q) ||
+          (Array.isArray(p.color_variations) && (p.color_variations as any[]).some(
+            (v: any) => v?.color?.toLowerCase().includes(q) || v?.color_code?.toLowerCase().includes(q)
+          )),
       );
     }
     return list;
@@ -86,7 +89,10 @@ function Inventory() {
         (p) =>
           p.name?.toLowerCase().includes(q) ||
           p.barcode?.toLowerCase().includes(q) ||
-          p.sku?.toLowerCase().includes(q),
+          p.sku?.toLowerCase().includes(q) ||
+          (Array.isArray(p.color_variations) && (p.color_variations as any[]).some(
+            (v: any) => v?.color?.toLowerCase().includes(q) || v?.color_code?.toLowerCase().includes(q)
+          )),
       );
     }
     return list;
@@ -223,7 +229,7 @@ function Inventory() {
           <input
             value={searchQ}
             onChange={(e) => setSearchQ(e.target.value)}
-            placeholder="Search by name, barcode, category…"
+            placeholder="Search by name, barcode, category, color, code…"
             className="bg-transparent text-sm outline-none w-56"
           />
         </div>
@@ -327,6 +333,38 @@ function Inventory() {
                       <span className="font-semibold">₹{Number(p.price ?? 0).toFixed(0)}</span>
                     </div>
                   </div>
+
+                  {/* Color Variants */}
+                  {Array.isArray(p.color_variations) && (p.color_variations as any[]).length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-border">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Color Variants</div>
+                      <div className="space-y-1">
+                        {(p.color_variations as any[]).filter((v: any) => v?.color || v?.color_code).slice(0, 4).map((v: any, i: number) => {
+                          const qty = Number(v.quantity) || 0;
+                          const sold = Number(v.sold) || 0;
+                          const rem = Number(v.remaining ?? qty - sold);
+                          const vOut = rem <= 0 && qty > 0;
+                          const vLow = rem > 0 && rem <= 2;
+                          return (
+                            <div key={i} className="flex items-center gap-2 text-[10px]">
+                              {v.image_url ? <img src={v.image_url} alt="" className="h-4 w-4 rounded object-cover" /> : null}
+                              <span className="font-medium">{v.color || v.color_code}</span>
+                              {v.color_code && v.color ? <span className="text-muted-foreground">({v.color_code})</span> : null}
+                              <span className="ml-auto font-semibold">{qty} purchased · {sold} sold</span>
+                              <span className={`font-bold ${vOut ? "text-rose-600" : vLow ? "text-amber-600" : "text-emerald-600"}`}>
+                                {vOut ? "OUT" : `${rem} left`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {(p.color_variations as any[]).filter((v: any) => v?.color || v?.color_code).length > 4 && (
+                          <div className="text-[9px] text-muted-foreground/70">
+                            +{(p.color_variations as any[]).filter((v: any) => v?.color || v?.color_code).length - 4} more variants
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Re-Stock button */}
                   <Link

@@ -8,7 +8,14 @@ export const Route = createFileRoute("/admin/pos")({
   component: () => null,
 });
 
-type ColorVariation = { color: string; image_url: string };
+type ColorVariation = {
+  color: string;
+  color_code: string;
+  image_url: string;
+  quantity: number;
+  sold: number;
+  remaining: number;
+};
 
 // States list — flexible so any Indian state can be added later. The business
 // state (where the store is registered) is used as the comparison baseline for
@@ -99,7 +106,11 @@ function POS() {
       .filter((x) => x && typeof x === "object")
       .map((x) => ({
         color: String(x.color ?? ""),
+        color_code: String(x.color_code ?? ""),
         image_url: String(x.image_url ?? ""),
+        quantity: Number(x.quantity) || 0,
+        sold: Number(x.sold) || 0,
+        remaining: Number(x.remaining ?? (Number(x.quantity) || 0) - (Number(x.sold) || 0)),
       }));
   }
 

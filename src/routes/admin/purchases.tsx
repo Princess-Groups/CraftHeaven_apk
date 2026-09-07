@@ -27,6 +27,14 @@ export const Route = createFileRoute("/admin/purchases")({
 });
 
 // ---------- Types ----------
+type ColorVariant = {
+  _id: string;
+  color_name: string;
+  color_code: string;
+  color_image: string;
+  quantity: number;
+};
+
 type ProductRow = {
   _rowId: string;
   id: string;
@@ -59,14 +67,17 @@ type ProductRow = {
   wholesale_profit_pct: number;
   wholesale_price: number;
   profit_per_piece_pct: number;
-  pieces_sold: number;
-  sold_for: number;
-  total_sold: number;
+  discount_type: "amount" | "percentage";
+  discount_pct: number;
+  discount_amount: number;
   minimum_stock: number;
   current_stock: number;
   rack_location: string;
   delivery_packing_charge: number;
   delivery_charge: number;
+  per_unit_delivery_packing: number;
+  per_unit_delivery: number;
+  per_unit_total_charges: number;
   re_stock: number;
   gst_rate: number;
   gst_amount: number;
@@ -76,6 +87,7 @@ type ProductRow = {
   remark: string;
   mrp: number;
   mop: number;
+  color_variants: ColorVariant[];
 };
 
 const uid = () =>
@@ -115,14 +127,17 @@ const blankRow = (serial: number): ProductRow => ({
   wholesale_profit_pct: 0,
   wholesale_price: 0,
   profit_per_piece_pct: 0,
-  pieces_sold: 0,
-  sold_for: 0,
-  total_sold: 0,
+  discount_type: "amount",
+  discount_pct: 0,
+  discount_amount: 0,
   minimum_stock: 5,
   current_stock: 0,
   rack_location: "",
   delivery_packing_charge: 0,
   delivery_charge: 0,
+  per_unit_delivery_packing: 0,
+  per_unit_delivery: 0,
+  per_unit_total_charges: 0,
   re_stock: 0,
   gst_rate: 0,
   gst_amount: 0,
@@ -132,6 +147,7 @@ const blankRow = (serial: number): ProductRow => ({
   remark: "",
   mrp: 0,
   mop: 0,
+  color_variants: [],
 });
 
 const UNITS = ["Nos", "Packet", "Unit", "Kilogram", "Gram", "Liter", "ML", "Meter", "Centimeter", "Inch", "DIAM"] as const;
@@ -139,8 +155,10 @@ const PAYMENT_METHODS = ["UPI", "CASH", "GPAY", "CARD"] as const;
 
 // ---------- Calculated fields ----------
 function calcRow(r: ProductRow): ProductRow {
-  // Auto-calculate Total Unit = Quantity × Per Packet Value
-  const qty = Number(r.quantity) || 0;
+  // Auto-calculate total quantity from color variants if any exist
+  const variants = r.color_variants || [];
+  const variantTotalQty = variants.reduce((sum, v) => sum + (Number(v.quantity) || 0), 0);
+  const qty = variants.length > 0 ? variantTotalQty : (Number(r.quantity) || 0);
   const ppv = Number(r.per_packet_value) || 0;
   const autoTotalUnit = ppv > 0 ? Math.round(qty * ppv * 100) / 100 : 0;
   // Use auto-calculated total_unit when per_packet_value is provided; otherwise fall back to manual entry
@@ -164,13 +182,25 @@ function calcRow(r: ProductRow): ProductRow {
 
   const rsp = retail_selling_price;
   const profit_pct = rsp > 0 && total_unit_cost > 0 ? ((rsp - total_unit_cost) / total_unit_cost) * 100 : 0;
-  const pieces = Number(r.pieces_sold) || 0;
-  const sold_for_val = Number(r.sold_for) || 0;
-  const total_sold = pieces * sold_for_val;
   const gst_pct = Math.min(Math.max(Number(r.gst_rate) || 0, 0), 100);
   const gst = final_purchase_cost * gst_pct / 100;
-  const discount = Number(r.discount) || 0;
-  const total_final = final_purchase_cost + Number(r.delivery_packing_charge) + Number(r.delivery_charge) + gst - discount;
+
+  // Discount calculation: supports both fixed amount and percentage
+  const discountType = r.discount_type || "amount";
+  const discountPct = Math.min(Math.max(Number(r.discount_pct) || 0, 0), 100);
+  const discountAmount = Number(r.discount_amount) || 0;
+  const discount = discountType === "percentage"
+    ? Math.round(final_purchase_cost * discountPct / 100 * 100) / 100
+    : discountAmount;
+
+  // Delivery & Packing charge distribution across quantity
+  const deliveryPackingCharge = Number(r.delivery_packing_charge) || 0;
+  const deliveryCharge = Number(r.delivery_charge) || 0;
+  const perUnitDeliveryPacking = qty > 0 ? Math.round(deliveryPackingCharge / qty * 100) / 100 : 0;
+  const perUnitDelivery = qty > 0 ? Math.round(deliveryCharge / qty * 100) / 100 : 0;
+  const perUnitTotalCharges = perUnitDeliveryPacking + perUnitDelivery;
+
+  const total_final = final_purchase_cost + deliveryPackingCharge + deliveryCharge + gst - discount;
 
   return {
     ...r,
@@ -180,10 +210,13 @@ function calcRow(r: ProductRow): ProductRow {
     total_price,
     total_unit_cost,
     final_purchase_cost,
+    per_unit_delivery_packing: perUnitDeliveryPacking,
+    per_unit_delivery: perUnitDelivery,
+    per_unit_total_charges: perUnitTotalCharges,
     retail_selling_price,
     wholesale_price,
     profit_per_piece_pct: Math.round(profit_pct * 100) / 100,
-    total_sold,
+    discount_amount: discount,
     gst_amount: Math.round(gst * 100) / 100,
     total_final: Math.round(total_final * 100) / 100,
   };
@@ -508,7 +541,7 @@ function Purchases() {
     async function loadRestock() {
       const { data: product } = await supabase
         .from("products")
-        .select("id,name,barcode,category_id,price,purchase_price,stock,reorder_level,unit,image_urls")
+        .select("id,name,barcode,category_id,price,purchase_price,stock,reorder_level,unit,image_urls,color_variations")
         .eq("id", rid)
         .single();
       if (!product) return toast.error("Product not found");
@@ -524,6 +557,15 @@ function Purchases() {
         minimum_stock: Number(product.reorder_level ?? 5),
         per_packet_unit: product.unit ?? "Nos",
         image_url: product.image_urls?.[0] ?? "",
+        color_variants: Array.isArray(product.color_variations)
+          ? (product.color_variations as any[]).map((v: any) => ({
+              _id: uid(),
+              color_name: v.color || "",
+              color_code: v.color_code || "",
+              color_image: v.image_url || "",
+              quantity: Number(v.quantity) || 0,
+            }))
+          : [],
       };
       setRows([newRow]);
       setEditingIdx(0);
@@ -550,7 +592,7 @@ function Purchases() {
       (
         await supabase
           .from("products")
-          .select("id,barcode,name,category_id,stock,reorder_level,unit,price,purchase_price,image_urls,sku")
+          .select("id,barcode,name,category_id,stock,reorder_level,unit,price,purchase_price,image_urls,sku,color_variations")
           .order("created_at", { ascending: false })
       ).data ?? [],
   });
@@ -628,7 +670,7 @@ function Purchases() {
         final_purchase_cost: acc.final_purchase_cost + r.final_purchase_cost,
         total_final: acc.total_final + r.total_final,
         gst: acc.gst + r.gst_amount,
-        discount: acc.discount + r.discount,
+        discount: acc.discount + r.discount_amount,
       }),
       { total_price: 0, final_purchase_cost: 0, total_final: 0, gst: 0, discount: 0 },
     );
@@ -791,6 +833,14 @@ function Purchases() {
         image_urls: row.image_url ? [row.image_url] : [],
         color: row.colour || null,
         is_available: (Number(row.current_stock) || 0) > 0,
+        color_variations: (row.color_variants || []).map((v) => ({
+          color: v.color_name || v.color_code || "",
+          color_code: v.color_code || "",
+          image_url: v.color_image || "",
+          quantity: Number(v.quantity) || 0,
+          sold: 0,
+          remaining: Number(v.quantity) || 0,
+        })),
       };
 
       if (row.id) {
@@ -859,6 +909,14 @@ function Purchases() {
         selling_price: Number(r.retail_selling_price) || 0,
         quantity: Number(r.quantity) || 1,
         slot_number: r.slot_id || null,
+        color_variations: (r.color_variants || []).map((v) => ({
+          color: v.color_name || v.color_code || "",
+          color_code: v.color_code || "",
+          image_url: v.color_image || "",
+          quantity: Number(v.quantity) || 0,
+          sold: 0,
+          remaining: Number(v.quantity) || 0,
+        })),
       }));
 
       // Call the create RPC
@@ -907,9 +965,9 @@ function Purchases() {
       "Product Name", "Material", "Colour", "Per Packet Value", "Per Packet Unit", "Total Unit", "Total Unit Type", "Qty", "Unit Price", "Total Price",
       "Purchase, Packing & Freight Charges", "Slot", "Slot Charge (Per Product)", "Other Charges", "Total Unit Cost",
       "Final Purchase Cost", "Retail Selling Price", "Wholesale Price", "Profit %",
-      "Pieces Sold", "Sold For", "Total Sold", "Min Stock", "Current Stock",
+      "Min Stock", "Current Stock",
       "Rack Location", "Del Packing Amt", "Del Charge Amt", "Re Stock",
-      "GST %", "GST Amt", "Discount", "Total Final",
+      "GST %", "GST Amt", "Discount Type", "Discount %", "Discount Amount", "Total Final",
       "Payment", "Remark", "MRP", "MOP",
     ];
     const csvRows = calculatedRows.map((r) => [
@@ -918,10 +976,10 @@ function Purchases() {
       r.total_price, r.purchase_packing_freight_charge,
       r.slot_id, r.slot_charge_per_product,
       r.other_charges, r.total_unit_cost, r.final_purchase_cost, r.retail_selling_price,
-      r.wholesale_price, r.profit_per_piece_pct, r.pieces_sold, r.sold_for,
-      r.total_sold, r.minimum_stock, r.current_stock, r.rack_location,
+      r.wholesale_price, r.profit_per_piece_pct,
+      r.minimum_stock, r.current_stock, r.rack_location,
       r.delivery_packing_charge, r.delivery_charge, r.re_stock,
-      r.gst_rate, r.gst_amount, r.discount, r.total_final,
+      r.gst_rate, r.gst_amount, r.discount_type, r.discount_pct, r.discount_amount, r.total_final,
       r.cash_received_by, r.remark, r.mrp, r.mop,
     ]);
     const csv = [headers.join(","), ...csvRows.map((r) => r.join(","))].join("\n");
@@ -964,15 +1022,13 @@ function Purchases() {
           other_charges: Number(cols[16]) || 0,
           retail_selling_price: Number(cols[19]) || 0,
           wholesale_price: Number(cols[20]) || 0,
-          pieces_sold: Number(cols[22]) || 0,
-          sold_for: Number(cols[23]) || 0,
-          minimum_stock: Number(cols[25]) || 5,
-          current_stock: Number(cols[26]) || 0,
-          rack_location: cols[27] ?? "",
-          cash_received_by: cols[34] ?? "",
-          remark: cols[35] ?? "",
-          mrp: Number(cols[36]) || 0,
-          mop: Number(cols[37]) || 0,
+          minimum_stock: Number(cols[23]) || 5,
+          current_stock: Number(cols[24]) || 0,
+          rack_location: cols[25] ?? "",
+          cash_received_by: cols[32] ?? "",
+          remark: cols[33] ?? "",
+          mrp: Number(cols[34]) || 0,
+          mop: Number(cols[35]) || 0,
         });
       }
       if (!newRows.length) return toast.error("No valid rows found in CSV");
@@ -983,7 +1039,7 @@ function Purchases() {
     e.target.value = "";
   }
 
-  // 40-field form definitions in exact user-specified sequence
+  // Form definitions for the purchase entry form
   const FORM_FIELDS: { key: string; label: string; type: string; ro?: boolean; unitField?: string }[] = [
     { key: "barcode", label: "Barcode", type: "text" },
     { key: "supplier_name", label: "Supplier Name", type: "select-supplier" },
@@ -1010,18 +1066,20 @@ function Purchases() {
     { key: "wholesale_profit_pct", label: "Wholesale Profit %", type: "number" },
     { key: "wholesale_price", label: "Wholesale Selling Price", type: "number", ro: true },
     { key: "profit_per_piece_pct", label: "Profit Per Piece %", type: "number", ro: true },
-    { key: "pieces_sold", label: "Number of Pieces Sold", type: "number" },
-    { key: "sold_for", label: "Sold For", type: "number" },
-    { key: "total_sold", label: "Total", type: "number", ro: true },
     { key: "minimum_stock", label: "Minimum Stock", type: "number" },
     { key: "current_stock", label: "Current Stock", type: "number" },
     { key: "rack_location", label: "Rack Location", type: "text" },
-    { key: "delivery_packing_charge", label: "Delivery Packing Charge", type: "number" },
-    { key: "delivery_charge", label: "Delivery Charge", type: "number" },
+    { key: "delivery_packing_charge", label: "Packing Charge (Total)", type: "number" },
+    { key: "delivery_charge", label: "Delivery Charge (Total)", type: "number" },
+    { key: "per_unit_delivery_packing", label: "Packing Charge / Unit", type: "number", ro: true },
+    { key: "per_unit_delivery", label: "Delivery Charge / Unit", type: "number", ro: true },
+    { key: "per_unit_total_charges", label: "Total Charges / Unit", type: "number", ro: true },
     { key: "re_stock", label: "Re Stock", type: "number" },
     { key: "gst_rate", label: "GST %", type: "number" },
     { key: "gst_amount", label: "GST Amount", type: "number", ro: true },
-    { key: "discount", label: "Discount", type: "number" },
+    { key: "discount_type", label: "Discount Type", type: "select-discount-type" },
+    { key: "discount_pct", label: "Discount %", type: "number" },
+    { key: "discount_amount", label: "Discount Amount (₹)", type: "number", ro: true },
     { key: "total_final", label: "Total Final", type: "number", ro: true },
     { key: "cash_received_by", label: "Cash Received By (UPI/CASH/GPAY)", type: "select-payment" },
     { key: "remark", label: "Remark", type: "text" },
@@ -1043,6 +1101,17 @@ function Purchases() {
             onChange={(val) => patchRow(idx, { supplier_name: val })}
             suppliers={suppliers ?? []}
           />
+        );
+      case "select-discount-type":
+        return (
+          <select
+            value={String(row.discount_type || "amount")}
+            onChange={(e) => patchRow(idx, { discount_type: e.target.value as "amount" | "percentage" })}
+            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          >
+            <option value="amount">₹ Amount</option>
+            <option value="percentage">% Percentage</option>
+          </select>
         );
       case "select-category":
         return (
@@ -1424,6 +1493,15 @@ function Purchases() {
                   retail_selling_price: Number(p.price ?? 0),
                   unit_price: Number(p.purchase_price ?? 0),
                   image_url: p.image_urls?.[0] ?? "",
+                  color_variants: Array.isArray(p.color_variations)
+                    ? (p.color_variations as any[]).map((v: any) => ({
+                        _id: uid(),
+                        color_name: v.color || "",
+                        color_code: v.color_code || "",
+                        color_image: v.image_url || "",
+                        quantity: Number(v.quantity) || 0,
+                      }))
+                    : [],
                 }]);
                 setEditingIdx(newIdx);
                 setFormOpen(true);
@@ -1491,6 +1569,163 @@ function Purchases() {
                 </div>
               ))}
             </div>
+
+            {/* ===== COLOR / VARIANT MANAGEMENT ===== */}
+            <div className="mt-4 pt-3 border-t border-border">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">Color / Variants</h3>
+                  <p className="text-[10px] text-muted-foreground">
+                    Add multiple colors with individual quantities. Total quantity will be auto-calculated.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const variants = activeRow.color_variants || [];
+                    patchRow(editingIdx!, {
+                      color_variants: [
+                        ...variants,
+                        { _id: uid(), color_name: "", color_code: "", color_image: "", quantity: 0 },
+                      ],
+                    });
+                  }}
+                  className="flex items-center gap-1 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Color
+                </button>
+              </div>
+
+              {/* Variant total display */}
+              {(activeRow.color_variants?.length ?? 0) > 0 && (
+                <div className="mb-3 flex items-center gap-4 rounded-lg bg-muted/50 p-2">
+                  <span className="text-[11px] font-semibold text-muted-foreground">
+                    Variants: {activeRow.color_variants?.length ?? 0}
+                  </span>
+                  <span className="text-[11px] font-semibold text-primary">
+                    Total Qty: {activeRow.color_variants?.reduce((s, v) => s + (Number(v.quantity) || 0), 0) ?? 0}
+                  </span>
+                </div>
+              )}
+
+              {/* Variant rows */}
+              {(activeRow.color_variants?.length ?? 0) > 0 && (
+                <div className="space-y-2">
+                  {activeRow.color_variants!.map((variant, vi) => (
+                    <div
+                      key={variant._id}
+                      className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-muted/30 p-3"
+                    >
+                      <div className="flex-1 min-w-[120px] space-y-1">
+                        <Label className="text-[10px] font-semibold text-muted-foreground">Color Name</Label>
+                        <input
+                          value={variant.color_name}
+                          onChange={(e) => {
+                            const variants = [...activeRow.color_variants!];
+                            variants[vi] = { ...variants[vi], color_name: e.target.value };
+                            patchRow(editingIdx!, { color_variants: variants });
+                          }}
+                          placeholder="e.g. White"
+                          className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-[100px] space-y-1">
+                        <Label className="text-[10px] font-semibold text-muted-foreground">Color Code</Label>
+                        <input
+                          value={variant.color_code}
+                          onChange={(e) => {
+                            const variants = [...activeRow.color_variants!];
+                            variants[vi] = { ...variants[vi], color_code: e.target.value };
+                            patchRow(editingIdx!, { color_variants: variants });
+                          }}
+                          placeholder="e.g. WH01"
+                          className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                        />
+                      </div>
+                      <div className="w-24 space-y-1">
+                        <Label className="text-[10px] font-semibold text-muted-foreground">Qty</Label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={variant.quantity || ""}
+                          onChange={(e) => {
+                            const variants = [...activeRow.color_variants!];
+                            variants[vi] = { ...variants[vi], quantity: Number(e.target.value) || 0 };
+                            patchRow(editingIdx!, { color_variants: variants });
+                          }}
+                          className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-semibold text-muted-foreground">Image</Label>
+                        <div className="flex items-center gap-1">
+                          {variant.color_image ? (
+                            <div className="relative">
+                              <img src={variant.color_image} alt="" className="h-9 w-9 rounded-lg object-cover border border-border" />
+                              <button
+                                onClick={() => {
+                                  const variants = [...activeRow.color_variants!];
+                                  variants[vi] = { ...variants[vi], color_image: "" };
+                                  patchRow(editingIdx!, { color_variants: variants });
+                                }}
+                                className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-rose-500 text-white grid place-items-center shadow"
+                              >
+                                <X className="h-2.5 w-2.5" />
+                              </button>
+                            </div>
+                          ) : null}
+                          <label className="cursor-pointer text-muted-foreground/60 hover:text-primary transition">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="sr-only"
+                              onChange={async (e) => {
+                                const f = e.target.files?.[0];
+                                if (!f) return;
+                                setUploading(variant._id);
+                                try {
+                                  const url = await uploadProductImage(f);
+                                  const variants = [...activeRow.color_variants!];
+                                  variants[vi] = { ...variants[vi], color_image: url };
+                                  patchRow(editingIdx!, { color_variants: variants });
+                                  toast.success("Color image uploaded");
+                                } catch (err) {
+                                  toast.error(err instanceof Error ? err.message : "Upload failed");
+                                } finally {
+                                  setUploading(null);
+                                  e.target.value = "";
+                                }
+                              }}
+                            />
+                            {uploading === variant._id ? (
+                              <Loader2 className="h-5 w-5 animate-spin" />
+                            ) : (
+                              <ImageIcon className="h-5 w-5" />
+                            )}
+                          </label>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const variants = activeRow.color_variants!.filter((_, k) => k !== vi);
+                          patchRow(editingIdx!, { color_variants: variants });
+                        }}
+                        className="rounded p-1.5 hover:bg-rose-50 text-rose-500 mb-0.5"
+                        title="Remove color"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(activeRow.color_variants?.length ?? 0) === 0 && (
+                <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground/70">
+                  No color variants added. Click "Add Color" to manage multiple colors for this product.
+                </div>
+              )}
+            </div>
+
             {/* Save button at bottom */}
             <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-border">
               <button

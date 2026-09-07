@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Search, Plus, Minus, Trash2, ScanBarcode, Printer, X } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ScanBarcode, Printer, X, Users, FileText } from "lucide-react";
 import { COMPANY, TAX_INVOICE, AUTO_PRINT_POS, PRINT_CSS } from "@/lib/company";
 const logoUrl = COMPANY.logo;
 
@@ -12,7 +12,14 @@ export const Route = createFileRoute("/admin/billing")({
   component: Billing,
 });
 
-type ColorVariation = { color: string; image_url: string };
+type ColorVariation = {
+  color: string;
+  color_code: string;
+  image_url: string;
+  quantity: number;
+  sold: number;
+  remaining: number;
+};
 
 type Product = {
   id: string;
@@ -39,6 +46,21 @@ type BillLine = {
   colorImage: string;
 };
 
+type SpecialBillingItem = {
+  _id: string;
+  product_name: string;
+  pieces_sold: number;
+  sold_for: number;
+  unit_price: number;
+  gst_rate: number;
+};
+
+type SpecialBillingClient = {
+  name: string;
+  contact: string;
+  address: string;
+};
+
 function Billing() {
   const qc = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,6 +73,15 @@ function Billing() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // Special Billing state
+  const [billingMode, setBillingMode] = useState<"normal" | "special">("normal");
+  const [specialClient, setSpecialClient] = useState<SpecialBillingClient>({ name: "", contact: "", address: "" });
+  const [specialItems, setSpecialItems] = useState<SpecialBillingItem[]>([]);
+  const [specialDiscount, setSpecialDiscount] = useState(0);
+  const [specialDeliveryCharge, setSpecialDeliveryCharge] = useState(0);
+  const [specialPackingCharge, setSpecialPackingCharge] = useState(0);
+  const [specialPayment, setSpecialPayment] = useState<"CASH" | "UPI" | "CARD">("CASH");
+
   useEffect(() => {
     searchRef.current?.focus();
   }, []);
@@ -61,7 +92,11 @@ function Billing() {
       .filter((x) => x && typeof x === "object")
       .map((x) => ({
         color: String(x.color ?? ""),
+        color_code: String(x.color_code ?? ""),
         image_url: String(x.image_url ?? ""),
+        quantity: Number(x.quantity) || 0,
+        sold: Number(x.sold) || 0,
+        remaining: Number(x.remaining ?? (Number(x.quantity) || 0) - (Number(x.sold) || 0)),
       }));
   }
 
@@ -120,6 +155,96 @@ function Billing() {
     searchRef.current?.focus();
     toast.success(`Added: ${p.name}`);
   }, []);
+
+  // Special Billing helpers
+  const uid = () => typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : "sb-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+
+  function addSpecialItem() {
+    setSpecialItems((prev) => [
+      ...prev,
+      { _id: uid(), product_name: "", pieces_sold: 0, sold_for: 0, unit_price: 0, gst_rate: 0 },
+    ]);
+  }
+
+  function updateSpecialItem(id: string, patch: Partial<SpecialBillingItem>) {
+    setSpecialItems((prev) => prev.map((it) => (it._id === id ? { ...it, ...patch } : it)));
+  }
+
+  function removeSpecialItem(id: string) {
+    setSpecialItems((prev) => prev.filter((it) => it._id !== id));
+  }
+
+  // Special Billing calculations
+  const specialSubtotal = useMemo(
+    () => specialItems.reduce((sum, it) => sum + (Number(it.sold_for) || 0), 0),
+    [specialItems],
+  );
+
+  const specialGst = useMemo(
+    () => specialItems.reduce((sum, it) => {
+      const amount = Number(it.sold_for) || 0;
+      const gstPct = Math.min(Math.max(Number(it.gst_rate) || 0, 0), 100);
+      return sum + (amount * gstPct) / 100;
+    }, 0),
+    [specialItems],
+  );
+
+  const specialTotal = Math.max(
+    0,
+    specialSubtotal + specialGst - specialDiscount + specialDeliveryCharge + specialPackingCharge,
+  );
+
+  async function placeSpecialSale() {
+    if (!specialClient.name.trim()) return toast.error("Client name is required");
+    if (specialItems.length === 0) return toast.error("Add at least one item");
+
+    const items = specialItems.map((it) => ({
+      product_name: it.product_name,
+      pieces_sold: Number(it.pieces_sold) || 0,
+      sold_for: Number(it.sold_for) || 0,
+      unit_price: Number(it.unit_price) || 0,
+      gst_rate: Number(it.gst_rate) || 0,
+    }));
+
+    const { data, error } = await supabase.rpc("place_order", {
+      _channel: "SPECIAL_BILLING" as never,
+      _payment_method: specialPayment as never,
+      _delivery_type: "SPECIAL" as never,
+      _address_id: null as never,
+      _items: [] as never,
+      _notes: JSON.stringify({
+        type: "SPECIAL_BILLING",
+        client: specialClient,
+        items,
+        pieces_sold: specialItems.reduce((sum, it) => sum + (Number(it.pieces_sold) || 0), 0),
+        sold_for_total: specialSubtotal,
+        discount: specialDiscount,
+        delivery_charge: specialDeliveryCharge,
+        packing_charge: specialPackingCharge,
+      }) as never,
+      _tax_type: "CGST_SGST" as never,
+      _shipping: specialDeliveryCharge + specialPackingCharge,
+      _state: "Tamil Nadu" as never,
+      _discount: specialDiscount,
+    });
+
+    if (error) return toast.error(error.message);
+    setInvoice({ id: data as string, at: new Date().toISOString(), auto: AUTO_PRINT_POS });
+    toast.success("Special Billing completed");
+    resetSpecialBilling();
+    qc.invalidateQueries();
+  }
+
+  function resetSpecialBilling() {
+    setSpecialClient({ name: "", contact: "", address: "" });
+    setSpecialItems([]);
+    setSpecialDiscount(0);
+    setSpecialDeliveryCharge(0);
+    setSpecialPackingCharge(0);
+    setSpecialPayment("CASH");
+  }
 
   // Auto-search on barcode scan (Enter key)
   function onSearchSubmit(e: React.FormEvent) {
@@ -214,10 +339,293 @@ function Billing() {
 
   if (invoice) return <Invoice orderId={invoice.id} at={invoice.at} onDone={reset} auto={invoice.auto} />;
 
+  // ---- SPECIAL BILLING MODE ----
+  if (billingMode === "special") {
+    return (
+      <div className="space-y-4">
+        {/* Mode Selector */}
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold text-foreground flex-1">Billing</h1>
+          <button
+            onClick={() => setBillingMode("normal")}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft"
+          >
+            <ScanBarcode className="h-3.5 w-3.5" /> Normal Billing
+          </button>
+          <button
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white"
+          >
+            <Users className="h-3.5 w-3.5" /> Special Billing
+          </button>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+          {/* Left: Special Billing Form */}
+          <div className="space-y-4">
+            {/* Client Details */}
+            <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <Users className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-bold text-foreground">Client / Customer Details</h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">Client Name *</label>
+                  <input
+                    value={specialClient.name}
+                    onChange={(e) => setSpecialClient({ ...specialClient, name: e.target.value })}
+                    placeholder="Enter client name"
+                    className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">Contact Number</label>
+                  <input
+                    value={specialClient.contact}
+                    onChange={(e) => setSpecialClient({ ...specialClient, contact: e.target.value })}
+                    placeholder="Phone number"
+                    className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">Address</label>
+                  <input
+                    value={specialClient.address}
+                    onChange={(e) => setSpecialClient({ ...specialClient, address: e.target.value })}
+                    placeholder="Client address"
+                    className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Product / Sale Items */}
+            <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  <h2 className="text-sm font-bold text-foreground">Product / Sale Details</h2>
+                </div>
+                <button
+                  onClick={addSpecialItem}
+                  className="flex items-center gap-1 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Item
+                </button>
+              </div>
+
+              {specialItems.length === 0 ? (
+                <div className="py-8 text-center text-xs text-muted-foreground/70">
+                  No items added. Click "Add Item" to begin.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {specialItems.map((item, idx) => (
+                    <div key={item._id} className="rounded-lg border border-border bg-muted/30 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase">Item {idx + 1}</span>
+                        <button
+                          onClick={() => removeSpecialItem(item._id)}
+                          className="rounded p-1 hover:bg-rose-50 text-rose-500"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        <div className="col-span-2">
+                          <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Product / Item</label>
+                          <input
+                            value={item.product_name}
+                            onChange={(e) => updateSpecialItem(item._id, { product_name: e.target.value })}
+                            placeholder="Product name"
+                            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Pieces Sold</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={item.pieces_sold || ""}
+                            onChange={(e) => updateSpecialItem(item._id, { pieces_sold: Number(e.target.value) || 0 })}
+                            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary text-right"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Sold For (₹)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={item.sold_for || ""}
+                            onChange={(e) => updateSpecialItem(item._id, { sold_for: Number(e.target.value) || 0 })}
+                            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary text-right"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">GST %</label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={item.gst_rate || ""}
+                            onChange={(e) => updateSpecialItem(item._id, { gst_rate: Number(e.target.value) || 0 })}
+                            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary text-right"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right: Special Billing Summary */}
+          <aside className="space-y-3 rounded-xl border border-border bg-white p-4 shadow-sm lg:sticky lg:top-20 h-fit">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-bold text-foreground">Special Billing Summary</div>
+              {specialItems.length > 0 && (
+                <button onClick={resetSpecialBilling} className="text-[11px] text-muted-foreground hover:text-rose-600">
+                  Clear All
+                </button>
+              )}
+            </div>
+
+            {/* Client Info */}
+            {specialClient.name && (
+              <div className="rounded-lg bg-primary/5 p-2 text-xs">
+                <div className="font-semibold text-primary">{specialClient.name}</div>
+                {specialClient.contact && <div className="text-muted-foreground">{specialClient.contact}</div>}
+                {specialClient.address && <div className="text-muted-foreground">{specialClient.address}</div>}
+              </div>
+            )}
+
+            {specialItems.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground/70">Add items to begin</div>
+            ) : (
+              <>
+                {/* Items Summary */}
+                <div className="rounded-lg bg-muted p-3 text-xs space-y-2">
+                  {specialItems.map((it) => (
+                    <div key={it._id} className="flex justify-between">
+                      <span className="truncate flex-1">{it.product_name || "Unnamed"}</span>
+                      <span className="font-semibold ml-2">₹{(Number(it.sold_for) || 0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div className="border-t border-border pt-2 flex justify-between font-semibold">
+                    <span>Subtotal ({specialItems.reduce((s, it) => s + (Number(it.pieces_sold) || 0), 0)} pieces)</span>
+                    <span>₹{specialSubtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">GST</span>
+                    <span>₹{specialGst.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Discount</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={specialDiscount}
+                      onChange={(e) => setSpecialDiscount(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-20 rounded border border-border px-2 py-0.5 text-right text-xs"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Delivery Charge</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={specialDeliveryCharge}
+                      onChange={(e) => setSpecialDeliveryCharge(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-20 rounded border border-border px-2 py-0.5 text-right text-xs"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Packing Charge</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={specialPackingCharge}
+                      onChange={(e) => setSpecialPackingCharge(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-20 rounded border border-border px-2 py-0.5 text-right text-xs"
+                    />
+                  </div>
+                  <div className="flex justify-between border-t border-border pt-2 text-sm font-bold text-foreground">
+                    <span>Total</span>
+                    <span>₹{specialTotal.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/* Payment Method */}
+                <div>
+                  <div className="text-[11px] font-semibold text-muted-foreground mb-1.5">Payment Method</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["CASH", "UPI", "CARD"] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setSpecialPayment(m)}
+                        className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
+                          specialPayment === m
+                            ? "border-secondary bg-secondary/10 text-secondary"
+                            : "border-border text-muted-foreground hover:bg-secondary-soft"
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Total Cash Received */}
+                <div className="rounded-lg bg-emerald-50 p-3 text-center">
+                  <div className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold">
+                    Total Payable
+                  </div>
+                  <div className="text-xl font-extrabold text-emerald-800 mt-1">
+                    ₹{specialTotal.toFixed(2)}
+                  </div>
+                  <div className="text-[10px] text-emerald-600 mt-0.5">
+                    via {specialPayment}
+                  </div>
+                </div>
+
+                {/* Complete Sale */}
+                <button
+                  onClick={placeSpecialSale}
+                  disabled={!specialClient.name.trim() || specialItems.length === 0}
+                  className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white shadow disabled:opacity-50 hover:bg-primary/90 transition"
+                >
+                  Complete Special Sale — ₹{specialTotal.toFixed(2)}
+                </button>
+              </>
+            )}
+          </aside>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- NORMAL BILLING MODE ----
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
       {/* Left: Search + product display */}
       <div className="space-y-4">
+        {/* Mode Selector */}
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold text-foreground flex-1">Billing</h1>
+          <button
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white"
+          >
+            <ScanBarcode className="h-3.5 w-3.5" /> Normal Billing
+          </button>
+          <button
+            onClick={() => setBillingMode("special")}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft"
+          >
+            <Users className="h-3.5 w-3.5" /> Special Billing
+          </button>
+        </div>
+
         {/* Search bar */}
         <form
           onSubmit={onSearchSubmit}
@@ -274,13 +682,19 @@ function Billing() {
             </div>
             {searchResults.map((p) => {
               const price = Number(p.discount_price ?? p.price);
-              const vars = mapVariations(p.color_variations).filter((v) => v.color);
+              const vars = mapVariations(p.color_variations).filter((v) => v.color || v.color_code);
+              const totalVariantQty = vars.reduce((s, v) => s + v.quantity, 0);
+              const totalVariantSold = vars.reduce((s, v) => s + v.sold, 0);
+              const totalVariantRemaining = vars.reduce((s, v) => s + (v.remaining ?? (v.quantity - v.sold)), 0);
+              const hasVariants = vars.length > 0;
+              const stockDisplay = hasVariants ? totalVariantRemaining : p.stock;
+              const isOutOfStock = stockDisplay <= 0;
               return (
                 <button
                   key={p.id}
                   onClick={() => addProduct(p)}
-                  disabled={p.stock <= 0}
-                  className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-secondary-soft text-left transition ${p.stock <= 0 ? "opacity-50" : ""}`}
+                  disabled={isOutOfStock}
+                  className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-secondary-soft text-left transition ${isOutOfStock ? "opacity-50" : ""}`}
                 >
                   <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">
                     {p.image_urls?.[0] ? (
@@ -294,16 +708,39 @@ function Billing() {
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-sm font-bold text-foreground">₹{price}</span>
-                      {vars.length > 0 && (
-                        <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">
-                          {vars.length} colours
+                      {hasVariants && (
+                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">
+                          {vars.length} variant{vars.length !== 1 ? "s" : ""}
                         </span>
                       )}
                     </div>
+                    {hasVariants && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {vars.slice(0, 4).map((v) => {
+                          const rem = v.remaining ?? (v.quantity - v.sold);
+                          const vOut = rem <= 0 && v.quantity > 0;
+                          const vLow = rem > 0 && rem <= 2;
+                          return (
+                            <span
+                              key={v.color + v.color_code}
+                              className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold ${
+                                vOut ? "bg-rose-50 text-rose-600" : vLow ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
+                              }`}
+                            >
+                              {v.image_url ? <img src={v.image_url} alt="" className="h-2.5 w-2.5 rounded-full object-cover" /> : null}
+                              {v.color || v.color_code}
+                              {v.color_code ? <span className="opacity-60">({v.color_code})</span> : null}
+                              <span className="opacity-60">·{rem}</span>
+                            </span>
+                          );
+                        })}
+                        {vars.length > 4 && <span className="text-[8px] text-muted-foreground">+{vars.length - 4}</span>}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
-                    <span className={`text-xs font-semibold ${p.stock <= 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                      {p.stock <= 0 ? "Out of stock" : `${p.stock} left`}
+                    <span className={`text-xs font-semibold ${isOutOfStock ? "text-rose-600" : "text-emerald-600"}`}>
+                      {isOutOfStock ? "Out of stock" : `${stockDisplay} left`}
                     </span>
                   </div>
                 </button>
@@ -320,7 +757,7 @@ function Billing() {
             </div>
             {lines.map((l, i) => {
               const price = Number(l.product.discount_price ?? l.product.price);
-              const vars = mapVariations(l.product.color_variations).filter((v) => v.color);
+              const vars = mapVariations(l.product.color_variations).filter((v) => v.color || v.color_code);
               return (
                 <div key={l.product.id} className="rounded-xl border border-border bg-white p-3 shadow-sm">
                   <div className="flex items-start gap-3">
@@ -337,26 +774,34 @@ function Billing() {
                       </div>
                       {vars.length > 0 && (
                         <div className="mt-1.5 flex flex-wrap gap-1">
-                          {vars.map((v) => (
-                            <button
-                              key={v.color}
-                              onClick={() =>
-                                setLines(lines.map((x, j) =>
-                                  j === i ? { ...x, color: v.color, colorImage: v.image_url } : x,
-                                ))
-                              }
-                              className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
-                                l.color === v.color
-                                  ? "border-secondary bg-secondary/10 text-secondary"
-                                  : "border-border text-muted-foreground"
-                              }`}
-                            >
-                              {v.image_url ? (
-                                <img src={v.image_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover" />
-                              ) : null}
-                              {v.color}
-                            </button>
-                          ))}
+                          {vars.map((v) => {
+                            const rem = v.remaining ?? (v.quantity - v.sold);
+                            const vOut = rem <= 0 && v.quantity > 0;
+                            return (
+                              <button
+                                key={v.color + v.color_code}
+                                onClick={() => {
+                                  if (vOut) { toast.error(`Only ${rem} left for ${v.color || v.color_code}`); return; }
+                                  setLines(lines.map((x, j) =>
+                                    j === i ? { ...x, color: v.color || v.color_code, colorImage: v.image_url } : x,
+                                  ));
+                                }}
+                                disabled={vOut}
+                                className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                                  l.color === v.color || l.color === v.color_code
+                                    ? "border-secondary bg-secondary/10 text-secondary"
+                                    : vOut ? "border-border text-muted-foreground/40" : "border-border text-muted-foreground"
+                                }`}
+                              >
+                                {v.image_url ? (
+                                  <img src={v.image_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover" />
+                                ) : null}
+                                {v.color || v.color_code}
+                                {v.color_code ? <span className="opacity-60">({v.color_code})</span> : null}
+                                <span className="opacity-60">·{rem}</span>
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
