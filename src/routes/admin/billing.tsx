@@ -3,8 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Search, Plus, Minus, Trash2, ScanBarcode, Printer, X, Users, FileText } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ScanBarcode, Printer, X, Users, FileText, Percent } from "lucide-react";
 import { COMPANY, TAX_INVOICE, AUTO_PRINT_POS, PRINT_CSS } from "@/lib/company";
+import { autoAssignGst, splitCgstSgst, GST_RATES, GST_RATE_LABELS, calcGstAmount } from "@/lib/gst-config";
 const logoUrl = COMPANY.logo;
 
 export const Route = createFileRoute("/admin/billing")({
@@ -35,6 +36,7 @@ type Product = {
   cgst_rate: number | null;
   sgst_rate: number | null;
   igst_rate: number | null;
+  category_id: string | null;
   color: string | null;
   color_variations: ColorVariation[];
 };
@@ -44,6 +46,7 @@ type BillLine = {
   qty: number;
   color: string;
   colorImage: string;
+  gstOverride: number | null; // per-line manual override, null = use product's GST
 };
 
 type SpecialBillingItem = {
@@ -108,7 +111,7 @@ function Billing() {
       let query = supabase
         .from("products")
         .select(
-          "id,name,price,discount_price,stock,unit,barcode,sku,gst_rate,image_urls,cgst_rate,sgst_rate,igst_rate,color,color_variations",
+          "id,name,price,discount_price,stock,unit,barcode,sku,gst_rate,image_urls,cgst_rate,sgst_rate,igst_rate,category_id,color,color_variations",
         )
         .limit(10);
       if (searchType === "barcode") {
@@ -147,6 +150,7 @@ function Billing() {
           qty: 1,
           color: firstVar?.color ?? p.color ?? "",
           colorImage: firstVar?.image_url ?? p.image_urls?.[0] ?? "",
+          gstOverride: null,
         },
       ];
     });
@@ -155,6 +159,30 @@ function Billing() {
     searchRef.current?.focus();
     toast.success(`Added: ${p.name}`);
   }, []);
+
+  // Categories query for GST auto-assignment
+  const { data: categories } = useQuery({
+    queryKey: ["billing-cats"],
+    queryFn: async () => (await supabase.from("categories").select("id,name")).data ?? [],
+  });
+
+  const categoryNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    (categories ?? []).forEach((c: { id: string; name: string }) => { map[c.id] = c.name; });
+    return map;
+  }, [categories]);
+
+  // Get the effective GST rate for a bill line (override > product default > auto-assign)
+  function getEffectiveGst(line: BillLine): number {
+    if (line.gstOverride !== null && line.gstOverride !== undefined) return line.gstOverride;
+    const categoryName = line.product.category_id ? categoryNameMap[line.product.category_id] ?? null : null;
+    return autoAssignGst(line.product.name, categoryName, line.product.id, Number(line.product.gst_rate ?? 0));
+  }
+
+  // Update a line's GST override
+  function setLineGstOverride(lineIndex: number, rate: number | null) {
+    setLines((prev) => prev.map((l, i) => i === lineIndex ? { ...l, gstOverride: rate } : l));
+  }
 
   // Special Billing helpers
   const uid = () => typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -295,11 +323,11 @@ function Billing() {
     let total = 0;
     for (const l of lines) {
       const line = Number(l.product.discount_price ?? l.product.price) * l.qty;
-      const rate = Number(l.product.gst_rate ?? 0);
-      total += (line * rate) / 100;
+      const rate = getEffectiveGst(l);
+      total += calcGstAmount(line, rate);
     }
     return total;
-  }, [lines]);
+  }, [lines, categoryNameMap]);
 
   const total = Math.max(0, subtotal + gst - discount + shippingCharge);
 
@@ -463,14 +491,18 @@ function Billing() {
                         </div>
                         <div>
                           <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">GST %</label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={item.gst_rate || ""}
-                            onChange={(e) => updateSpecialItem(item._id, { gst_rate: Number(e.target.value) || 0 })}
-                            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary text-right"
-                          />
+                          <div className="flex items-center gap-1">
+                            <Percent className="h-3.5 w-3.5 text-muted-foreground/60" />
+                            <select
+                              value={item.gst_rate || 0}
+                              onChange={(e) => updateSpecialItem(item._id, { gst_rate: Number(e.target.value) || 0 })}
+                              className="w-full rounded-lg border border-border bg-white px-2 py-2 text-sm outline-none focus:border-primary"
+                            >
+                              {GST_RATES.map((r) => (
+                                <option key={r} value={r}>{r}%{r === 18 ? " — Standard" : r === 5 ? " — Textile" : r === 12 ? " — Tailoring" : r === 28 ? " — Luxury" : r === 0 ? " — Exempt" : ""}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -770,7 +802,28 @@ function Billing() {
                       <div className="text-sm font-semibold text-foreground">{l.product.name}</div>
                       <div className="text-[10px] text-muted-foreground">
                         {l.color ? <span className="font-semibold text-emerald-700">{l.color}</span> : null}
-                        {l.color ? " · " : ""}₹{price} · GST {Number(l.product.gst_rate ?? 0)}%
+                        {l.color ? " · " : ""}₹{price}
+                      </div>
+                      {/* Per-line GST override */}
+                      <div className="mt-1 flex items-center gap-1">
+                        <Percent className="h-3 w-3 text-muted-foreground/60" />
+                        <select
+                          value={l.gstOverride ?? ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setLineGstOverride(i, val === "" ? null : Number(val));
+                          }}
+                          className="rounded border border-border bg-white px-1.5 py-0.5 text-[10px] font-semibold outline-none focus:border-primary cursor-pointer"
+                          title="GST rate — select to override"
+                        >
+                          <option value="">Auto ({getEffectiveGst(l)}%)</option>
+                          {GST_RATES.map((r) => (
+                            <option key={r} value={r}>{r}%{r === 18 ? " — Standard" : r === 5 ? " — Textile" : r === 12 ? " — Tailoring" : r === 28 ? " — Luxury" : ""}</option>
+                          ))}
+                        </select>
+                        {l.gstOverride !== null && l.gstOverride !== undefined && (
+                          <span className="text-[9px] font-bold text-amber-600">Override</span>
+                        )}
                       </div>
                       {vars.length > 0 && (
                         <div className="mt-1.5 flex flex-wrap gap-1">

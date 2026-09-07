@@ -13,10 +13,12 @@ import {
   Loader2,
   ImageIcon,
   ChevronLeft,
+  Percent,
 } from "lucide-react";
 import { toast } from "sonner";
 import { uploadProductImage } from "@/lib/upload";
 import { Label } from "@/components/ui/label";
+import { autoAssignGst, GST_RATES, GST_RATE_LABELS } from "@/lib/gst-config";
 
 export const Route = createFileRoute("/admin/purchases")({
   head: () => ({ meta: [{ title: "Purchase Entry — ACH Admin" }] }),
@@ -545,12 +547,17 @@ function Purchases() {
         .eq("id", rid)
         .single();
       if (!product) return toast.error("Product not found");
+      const catName = product.category_id
+        ? (categories ?? []).find((c: { id: string; name: string }) => c.id === product.category_id)?.name ?? null
+        : null;
+      const assignedGst = autoAssignGst(product.name ?? "", catName, undefined, null);
       const newRow = {
         ...blankRow(1),
         id: product.id,
         name: product.name ?? "",
         barcode: product.barcode ?? "",
         category_id: product.category_id ?? "",
+        gst_rate: assignedGst,
         retail_selling_price: Number(product.price ?? 0),
         unit_price: Number(product.purchase_price ?? 0),
         current_stock: Number(product.stock ?? 0),
@@ -679,6 +686,21 @@ function Purchases() {
   const patchRow = useCallback((idx: number, patch: Partial<ProductRow>) => {
     setRows((prev) => {
       let next = prev.map((r, i) => (i === idx ? { ...r, ...patch } : r));
+
+      // Auto-assign GST when category_id or name changes (unless user explicitly set gst_rate)
+      if (patch.category_id !== undefined || patch.name !== undefined) {
+        const row = next[idx];
+        const catName = row.category_id
+          ? (categories ?? []).find((c: { id: string; name: string }) => c.id === row.category_id)?.name ?? null
+          : null;
+        // Only auto-assign if the user hasn't manually overridden GST (i.e., gst_rate wasn't in the patch)
+        if (patch.gst_rate === undefined) {
+          const autoRate = autoAssignGst(row.name ?? "", catName, undefined, null);
+          if (autoRate > 0 && (row.gst_rate === 0 || row.gst_rate === null || row.gst_rate === undefined)) {
+            next[idx] = { ...next[idx], gst_rate: autoRate };
+          }
+        }
+      }
       // Handle slot changes: recalculate charges for affected slots
       if (patch.slot_id !== undefined || patch.slot_total_charge !== undefined) {
         const row = prev[idx];
@@ -1075,7 +1097,7 @@ function Purchases() {
     { key: "per_unit_delivery", label: "Delivery Charge / Unit", type: "number", ro: true },
     { key: "per_unit_total_charges", label: "Total Charges / Unit", type: "number", ro: true },
     { key: "re_stock", label: "Re Stock", type: "number" },
-    { key: "gst_rate", label: "GST %", type: "number" },
+    { key: "gst_rate", label: "GST %", type: "select-gst" },
     { key: "gst_amount", label: "GST Amount", type: "number", ro: true },
     { key: "discount_type", label: "Discount Type", type: "select-discount-type" },
     { key: "discount_pct", label: "Discount %", type: "number" },
@@ -1112,6 +1134,21 @@ function Purchases() {
             <option value="amount">₹ Amount</option>
             <option value="percentage">% Percentage</option>
           </select>
+        );
+      case "select-gst":
+        return (
+          <div className="flex items-center gap-1">
+            <Percent className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+            <select
+              value={Number(row.gst_rate) || 0}
+              onChange={(e) => patchRow(idx, { gst_rate: Number(e.target.value) })}
+              className="w-full rounded-lg border border-border bg-white px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            >
+              {GST_RATES.map((r) => (
+                <option key={r} value={r}>{r}% — {GST_RATE_LABELS[r]?.split("—")[1]?.trim() || r}</option>
+              ))}
+            </select>
+          </div>
         );
       case "select-category":
         return (
@@ -1481,12 +1518,17 @@ function Purchases() {
               key={p.id}
               onClick={() => {
                 const newIdx = rows.length;
+                const catName = p.category_id
+                  ? (categories ?? []).find((c: { id: string; name: string }) => c.id === p.category_id)?.name ?? null
+                  : null;
+                const assignedGst = autoAssignGst(p.name ?? "", catName, undefined, null);
                 setRows((prev) => [...prev, {
                   ...blankRow(prev.length + 1),
                   id: p.id,
                   barcode: p.barcode ?? "",
                   name: p.name ?? "",
                   category_id: p.category_id ?? "",
+                  gst_rate: assignedGst,
                   current_stock: p.stock ?? 0,
                   minimum_stock: p.reorder_level ?? 5,
                   per_packet_unit: p.unit ?? "Nos",

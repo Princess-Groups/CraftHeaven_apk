@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useState, useMemo } from "react";
-import { Plus, Edit3, Trash2, Search, Upload, Image, X, Loader2 } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Plus, Edit3, Trash2, Search, Upload, Image, X, Loader2, Percent } from "lucide-react";
 import { toast } from "sonner";
 import { uploadProductImage, deleteProductImages } from "@/lib/upload";
 import { SearchableSelect, SearchableProductInput } from "@/components/ui/searchable-select";
 import type { SearchableSelectOption } from "@/components/ui/searchable-select";
+import { autoAssignGst, splitCgstSgst, GST_RATES, GST_RATE_LABELS } from "@/lib/gst-config";
 
 export const Route = createFileRoute("/admin/products")({
   head: () => ({ meta: [{ title: "Products — ACH Admin" }] }),
@@ -53,6 +54,7 @@ function Products() {
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [gstManualOverride, setGstManualOverride] = useState(false);
 
   const { data: products } = useQuery({
     queryKey: ["admin-products", q],
@@ -96,6 +98,25 @@ function Products() {
       (categoryProducts ?? []).map((p) => ({ id: p.id, name: p.name })),
     [categoryProducts],
   );
+
+  // Auto-assign GST when category or product name changes (unless manually overridden)
+  useEffect(() => {
+    if (!editing || gstManualOverride) return;
+    const categoryName = editing.category_id
+      ? (categories ?? []).find((c: { id: string; name: string }) => c.id === editing.category_id)?.name
+      : null;
+    const assignedGst = autoAssignGst(editing.name ?? "", categoryName, editing.id, null);
+    if (assignedGst !== (editing.gst_rate ?? 0)) {
+      const { cgst, sgst } = splitCgstSgst(assignedGst);
+      setEditing({
+        ...editing,
+        gst_rate: assignedGst,
+        cgst_rate: cgst,
+        sgst_rate: sgst,
+        igst_rate: assignedGst,
+      });
+    }
+  }, [editing?.name, editing?.category_id, categories, gstManualOverride]);
 
   function mapVariations(v: unknown): ColorVariation[] {
     if (!Array.isArray(v)) return [];
@@ -204,7 +225,8 @@ function Products() {
           />
         </div>
         <button
-          onClick={() =>
+          onClick={() => {
+            setGstManualOverride(false);
             setEditing({
               is_available: true,
               gst_rate: 0,
@@ -215,8 +237,8 @@ function Products() {
               reorder_level: 5,
               image_urls: [],
               color_variations: [],
-            })
-          }
+            });
+          }}
           className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white"
         >
           <Plus className="h-3.5 w-3.5" /> Add Product
@@ -320,9 +342,10 @@ function Products() {
                 <td className="p-3">
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={() =>
-                        setEditing({ ...p, color_variations: mapVariations(p.color_variations) })
-                      }
+                      onClick={() => {
+                        setGstManualOverride(false);
+                        setEditing({ ...p, color_variations: mapVariations(p.color_variations) });
+                      }}
                       className="rounded p-1.5 hover:bg-secondary-soft"
                     >
                       <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -473,44 +496,62 @@ function Products() {
                   placeholder="e.g. M"
                 />
               </Field>
-              <Field label="CGST / Central Tax (%)">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={editing.cgst_rate ?? 0}
-                  onChange={(e) =>
-                    setEditing(applySplitGst({ ...editing, cgst_rate: Number(e.target.value) }))
-                  }
-                  className={inputCls}
-                  placeholder="e.g. 9"
-                />
-              </Field>
-              <Field label="SGST / State Tax (%)">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={editing.sgst_rate ?? 0}
-                  onChange={(e) =>
-                    setEditing(applySplitGst({ ...editing, sgst_rate: Number(e.target.value) }))
-                  }
-                  className={inputCls}
-                  placeholder="e.g. 9"
-                />
-              </Field>
-              <Field label="IGST / Inter-State (%)">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={editing.igst_rate ?? 0}
-                  onChange={(e) =>
-                    setEditing(applySplitGst({ ...editing, igst_rate: Number(e.target.value) }))
-                  }
-                  className={inputCls}
-                  placeholder="e.g. 18"
-                />
+              <Field label="GST Rate (%)">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Percent className="h-3.5 w-3.5 text-muted-foreground/70" />
+                    <select
+                      value={editing.gst_rate ?? 0}
+                      onChange={(e) => {
+                        setGstManualOverride(true);
+                        const rate = Number(e.target.value);
+                        const { cgst, sgst } = splitCgstSgst(rate);
+                        setEditing({
+                          ...editing,
+                          gst_rate: rate,
+                          cgst_rate: cgst,
+                          sgst_rate: sgst,
+                          igst_rate: rate,
+                        });
+                      }}
+                      className={`${inputCls} flex-1`}
+                    >
+                      {GST_RATES.map((r) => (
+                        <option key={r} value={r}>
+                          {r}% — {GST_RATE_LABELS[r]?.split("—")[1]?.trim() || r}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground/70">
+                    <span>CGST: {splitCgstSgst(editing.gst_rate ?? 0).cgst}%</span>
+                    <span>SGST: {splitCgstSgst(editing.gst_rate ?? 0).sgst}%</span>
+                    <span>IGST: {editing.gst_rate ?? 0}%</span>
+                  </div>
+                  {gstManualOverride && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGstManualOverride(false);
+                        const categoryName = editing.category_id
+                          ? (categories ?? []).find((c: { id: string; name: string }) => c.id === editing.category_id)?.name
+                          : null;
+                        const assignedGst = autoAssignGst(editing.name ?? "", categoryName, editing.id, null);
+                        const { cgst, sgst } = splitCgstSgst(assignedGst);
+                        setEditing({
+                          ...editing,
+                          gst_rate: assignedGst,
+                          cgst_rate: cgst,
+                          sgst_rate: sgst,
+                          igst_rate: assignedGst,
+                        });
+                      }}
+                      className="text-[10px] text-secondary font-semibold hover:underline"
+                    >
+                      Reset to auto-assigned
+                    </button>
+                  )}
+                </div>
               </Field>
               <Field label="Category">
                 <SearchableSelect

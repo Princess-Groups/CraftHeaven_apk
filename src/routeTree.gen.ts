@@ -27,6 +27,7 @@ import { Route as AdminBillingRouteImport } from './routes/admin/billing'
 import { Route as AdminBrandsRouteImport } from './routes/admin/brands'
 import { Route as AdminCategoriesRouteImport } from './routes/admin/categories'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
+import { Route as AdminGstMasterRouteImport } from './routes/admin/gst-master'
 import { Route as AdminInventoryRouteImport } from './routes/admin/inventory'
 import { Route as AdminLoginRouteImport } from './routes/admin/login'
 import { Route as AdminMcRouteImport } from './routes/admin/mc'
@@ -142,6 +143,11 @@ const AdminCategoriesRoute = AdminCategoriesRouteImport.update({
 const AdminCustomersRoute = AdminCustomersRouteImport.update({
   id: '/customers',
   path: '/customers',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminGstMasterRoute = AdminGstMasterRouteImport.update({
+  id: '/gst-master',
+  path: '/gst-master',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminInventoryRoute = AdminInventoryRouteImport.update({
@@ -297,6 +303,7 @@ export interface FileRoutesByFullPath {
   '/admin/brands': typeof AdminBrandsRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/customers': typeof AdminCustomersRoute
+  '/admin/gst-master': typeof AdminGstMasterRoute
   '/admin/inventory': typeof AdminInventoryRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/mc': typeof AdminMcRouteWithChildren
@@ -342,6 +349,7 @@ export interface FileRoutesByTo {
   '/admin/brands': typeof AdminBrandsRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/customers': typeof AdminCustomersRoute
+  '/admin/gst-master': typeof AdminGstMasterRoute
   '/admin/inventory': typeof AdminInventoryRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/mc': typeof AdminMcRouteWithChildren
@@ -390,6 +398,7 @@ export interface FileRoutesById {
   '/admin/brands': typeof AdminBrandsRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/customers': typeof AdminCustomersRoute
+  '/admin/gst-master': typeof AdminGstMasterRoute
   '/admin/inventory': typeof AdminInventoryRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/mc': typeof AdminMcRouteWithChildren
@@ -438,6 +447,7 @@ export interface FileRouteTypes {
     | '/admin/brands'
     | '/admin/categories'
     | '/admin/customers'
+    | '/admin/gst-master'
     | '/admin/inventory'
     | '/admin/login'
     | '/admin/mc'
@@ -483,6 +493,7 @@ export interface FileRouteTypes {
     | '/admin/brands'
     | '/admin/categories'
     | '/admin/customers'
+    | '/admin/gst-master'
     | '/admin/inventory'
     | '/admin/login'
     | '/admin/mc'
@@ -530,6 +541,7 @@ export interface FileRouteTypes {
     | '/admin/brands'
     | '/admin/categories'
     | '/admin/customers'
+    | '/admin/gst-master'
     | '/admin/inventory'
     | '/admin/login'
     | '/admin/mc'
@@ -697,6 +709,13 @@ declare module '@tanstack/react-router' {
       path: '/customers'
       fullPath: '/admin/customers'
       preLoaderRoute: typeof AdminCustomersRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/gst-master': {
+      id: '/admin/gst-master'
+      path: '/gst-master'
+      fullPath: '/admin/gst-master'
+      preLoaderRoute: typeof AdminGstMasterRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/inventory': {
@@ -962,6 +981,7 @@ interface AdminRouteRouteChildren {
   AdminBrandsRoute: typeof AdminBrandsRoute
   AdminCategoriesRoute: typeof AdminCategoriesRoute
   AdminCustomersRoute: typeof AdminCustomersRoute
+  AdminGstMasterRoute: typeof AdminGstMasterRoute
   AdminInventoryRoute: typeof AdminInventoryRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AdminMcRoute: typeof AdminMcRouteWithChildren
@@ -983,6 +1003,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminBrandsRoute: AdminBrandsRoute,
   AdminCategoriesRoute: AdminCategoriesRoute,
   AdminCustomersRoute: AdminCustomersRoute,
+  AdminGstMasterRoute: AdminGstMasterRoute,
   AdminInventoryRoute: AdminInventoryRoute,
   AdminLoginRoute: AdminLoginRoute,
   AdminMcRoute: AdminMcRouteWithChildren,
