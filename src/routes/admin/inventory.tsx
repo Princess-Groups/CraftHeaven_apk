@@ -14,6 +14,7 @@ import {
   Check,
   Bell,
   ArrowRight,
+  Trash2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/inventory")({
@@ -137,6 +138,14 @@ function Inventory() {
     if (error) return toast.error(error.message);
     toast.success("Minimum stock updated");
     setEditingReorder(null);
+    qc.invalidateQueries({ queryKey: ["inv"] });
+  }
+
+  async function deleteProduct(id: string, name: string) {
+    if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) return;
+    const { error } = await supabase.from("products").delete().eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success(`"${name}" deleted`);
     qc.invalidateQueries({ queryKey: ["inv"] });
   }
 
@@ -277,16 +286,25 @@ function Inventory() {
                         <div className="text-[10px] text-muted-foreground">{p.barcode || "No barcode"}</div>
                       </div>
                     </div>
-                    <span
-                      className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        isOut
-                          ? "bg-rose-100 text-rose-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {isOut ? <XCircle className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
-                      {isOut ? "OUT OF STOCK" : "LOW STOCK"}
-                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          isOut
+                            ? "bg-rose-100 text-rose-700"
+                            : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {isOut ? <XCircle className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                        {isOut ? "OUT OF STOCK" : "LOW STOCK"}
+                      </span>
+                      <button
+                        onClick={() => deleteProduct(p.id, p.name)}
+                        className="rounded p-1 hover:bg-rose-50 transition"
+                        title="Delete product"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Details */}
@@ -400,6 +418,7 @@ function Inventory() {
                   <th className="p-3 text-right">Purchase Cost</th>
                   <th className="p-3 text-right">Retail Price</th>
                   <th className="p-3 text-right">Adjust</th>
+                  <th className="p-3 text-center w-16">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -454,6 +473,15 @@ function Inventory() {
                             }}
                           />
                         </div>
+                      </td>
+                      <td className="p-3 text-center">
+                        <button
+                          onClick={() => deleteProduct(p.id, p.name)}
+                          className="rounded p-1 hover:bg-rose-50 transition"
+                          title="Delete product"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                        </button>
                       </td>
                     </tr>
                   );

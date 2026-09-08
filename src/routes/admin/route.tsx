@@ -39,6 +39,8 @@ import {
   Sliders,
   Boxes,
   Package,
+  Box,
+  Layers,
 } from "lucide-react";
 import { useState } from "react";
 const logoUrl = "/ach-logo.png";
@@ -70,9 +72,11 @@ const NAV: { to: string; label: string; icon: React.ElementType; exact?: boolean
   { to: "/admin/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/admin/purchases", label: "Purchase Entry", icon: ShoppingCart, exact: true },
   { to: "/admin/supplies", label: "Supplies", icon: Package, exact: true },
+  { to: "/admin/slots", label: "Slot Management", icon: Box, exact: true },
   { to: "/admin/billing", label: "Billing", icon: ScanBarcode },
   { to: "/admin/orders", label: "Orders", icon: ClipboardList },
   { to: "/admin/categories", label: "Categories", icon: Tags },
+  { to: "/admin/materials", label: "Materials", icon: Layers },
   { to: "/admin/gst-master", label: "GST Master", icon: Percent },
   { to: "/admin/inventory", label: "Inventory", icon: Warehouse },
   { to: "/admin/reports", label: "Reports & Analytics", icon: BarChart3 },

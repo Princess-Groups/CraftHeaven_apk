@@ -698,25 +698,27 @@ const CategoryCombobox = memo(function CategoryCombobox({
   onChange: (val: string) => void;
   categories: { id: string; name: string }[];
 }) {
-  const [inputVal, setInputVal] = useState(value || "");
+  const [inputVal, setInputVal] = useState("");
   const [open, setOpen] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
 
-  // Find the selected category name for display
-  const selectedCategory = useMemo(
-    () => categories?.find((c) => c.id === value),
-    [categories, value],
-  );
+  // Compute display name from value (category_id)
+  const displayName = useMemo(() => {
+    if (!value) return "";
+    const cat = categories?.find((c) => c.id === value);
+    return cat?.name || value;
+  }, [value, categories]);
 
-  // Sync external value changes
+  // Sync input when value changes externally
   useEffect(() => {
-    setInputVal(selectedCategory?.name || value || "");
-  }, [value, selectedCategory]);
+    if (!open) {
+      setInputVal(displayName);
+    }
+  }, [displayName, open]);
 
-  // Build suggestion list: category names only
+  // Build suggestion list
   const allSuggestions = useMemo(() => {
     const names: string[] = [];
     for (const c of categories ?? []) {
@@ -737,8 +739,8 @@ const CategoryCombobox = memo(function CategoryCombobox({
     allSuggestions.some((n) => n.toLowerCase() === trimmedInput.toLowerCase());
 
   function selectCategory(categoryId: string, categoryName: string) {
-    setInputVal(categoryName);
     onChange(categoryId);
+    setInputVal(categoryName);
     setOpen(false);
     setHighlightIdx(-1);
   }
@@ -751,7 +753,6 @@ const CategoryCombobox = memo(function CategoryCombobox({
       }
       return;
     }
-    // Layout: [Select (if value)] + filtered categories + [Others (if custom input)]
     const hasSelectOption = value ? 1 : 0;
     const hasOthersOption = trimmedInput.length > 0 && !isExactMatch ? 1 : 0;
     const totalItems = hasSelectOption + filtered.length + hasOthersOption;
@@ -820,11 +821,8 @@ const CategoryCombobox = memo(function CategoryCombobox({
         autoComplete="off"
       />
       {open && (
-        <div
-          ref={listRef}
-          className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col"
-        >
-          {/* Search bar INSIDE the dropdown */}
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col">
+          {/* Search bar inside dropdown */}
           <div className="flex items-center border-b px-3 shrink-0">
             <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
             <input
@@ -842,7 +840,7 @@ const CategoryCombobox = memo(function CategoryCombobox({
 
           {/* Options list */}
           <div className="max-h-52 overflow-y-auto p-1">
-            {/* "Select" option — only shown when a value is selected */}
+            {/* Select option */}
             {value && (
               <button
                 type="button"
@@ -886,7 +884,7 @@ const CategoryCombobox = memo(function CategoryCombobox({
               );
             })}
 
-            {/* "Others" option — shown when typed text doesn't match any category */}
+            {/* Others option */}
             {trimmedInput.length > 0 && !isExactMatch && (
               <button
                 type="button"
@@ -908,14 +906,252 @@ const CategoryCombobox = memo(function CategoryCombobox({
               </button>
             )}
 
-            {/* No results message */}
-            {filtered.length === 0 &&
-              trimmedInput.length > 0 &&
-              !isExactMatch && (
-                <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
-                  No matching categories found
-                </div>
-              )}
+            {/* No results */}
+            {filtered.length === 0 && trimmedInput.length > 0 && !isExactMatch && (
+              <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
+                No matching categories found
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+// ---------- Material Combobox (filtered by category) ----------
+const MaterialCombobox = memo(function MaterialCombobox({
+  value,
+  onChange,
+  categoryId,
+  materials,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  categoryId: string;
+  materials: { id: string; name: string; category_id: string | null }[];
+}) {
+  const [inputVal, setInputVal] = useState("");
+  const [open, setOpen] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Filter materials by selected category
+  const categoryMaterials = useMemo(() => {
+    if (!categoryId) return [];
+    return materials.filter((m) => m.category_id === categoryId);
+  }, [materials, categoryId]);
+
+  // Compute display name from value
+  const displayName = useMemo(() => {
+    if (!value) return "";
+    const mat = materials.find((m) => m.id === value);
+    return mat?.name || value;
+  }, [value, materials]);
+
+  // Sync input when value changes externally
+  useEffect(() => {
+    if (!open) {
+      setInputVal(displayName);
+    }
+  }, [displayName, open]);
+
+  // Build suggestion list from category materials
+  const allSuggestions = useMemo(() => {
+    const names: string[] = [];
+    for (const m of categoryMaterials) {
+      if (m.name?.trim()) names.push(m.name.trim());
+    }
+    return names;
+  }, [categoryMaterials]);
+
+  const filtered = useMemo(() => {
+    const q = inputVal.trim().toLowerCase();
+    if (!q) return allSuggestions;
+    return allSuggestions.filter((n) => n.toLowerCase().includes(q));
+  }, [inputVal, allSuggestions]);
+
+  const trimmedInput = inputVal.trim();
+  const isExactMatch =
+    trimmedInput.length > 0 &&
+    allSuggestions.some((n) => n.toLowerCase() === trimmedInput.toLowerCase());
+
+  function selectMaterial(materialId: string, materialName: string) {
+    onChange(materialId);
+    setInputVal(materialName);
+    setOpen(false);
+    setHighlightIdx(-1);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!open) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+    const hasSelectOption = value ? 1 : 0;
+    const hasOthersOption = trimmedInput.length > 0 && !isExactMatch ? 1 : 0;
+    const totalItems = hasSelectOption + filtered.length + hasOthersOption;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIdx((i) => (i + 1) % totalItems);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIdx((i) => (i - 1 + totalItems) % totalItems);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (hasSelectOption && highlightIdx === 0) {
+        selectMaterial("", "");
+      } else if (
+        highlightIdx >= hasSelectOption &&
+        highlightIdx < hasSelectOption + filtered.length
+      ) {
+        const matIdx = highlightIdx - hasSelectOption;
+        const mat = categoryMaterials.find((m) => m.name === filtered[matIdx]);
+        if (mat) selectMaterial(mat.id, mat.name);
+      } else if (
+        hasOthersOption &&
+        highlightIdx === hasSelectOption + filtered.length
+      ) {
+        selectMaterial(trimmedInput, trimmedInput);
+      } else if (filtered.length === 1) {
+        const mat = categoryMaterials.find((m) => m.name === filtered[0]);
+        if (mat) selectMaterial(mat.id, mat.name);
+      } else if (hasOthersOption) {
+        selectMaterial(trimmedInput, trimmedInput);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setHighlightIdx(-1);
+    }
+  }
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <input
+        ref={inputRef}
+        type="text"
+        value={inputVal}
+        onChange={(e) => {
+          setInputVal(e.target.value);
+          setHighlightIdx(-1);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        placeholder={categoryId ? "Type to search materials…" : "Select category first…"}
+        disabled={!categoryId}
+        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:bg-muted/50 disabled:cursor-not-allowed"
+        autoComplete="off"
+      />
+      {open && categoryId && (
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col">
+          {/* Search bar inside dropdown */}
+          <div className="flex items-center border-b px-3 shrink-0">
+            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+            <input
+              type="text"
+              value={inputVal}
+              onChange={(e) => {
+                setInputVal(e.target.value);
+                setHighlightIdx(-1);
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Search materials…"
+              className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+
+          {/* Options list */}
+          <div className="max-h-52 overflow-y-auto p-1">
+            {/* Select option */}
+            {value && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectMaterial("", "");
+                }}
+                onMouseEnter={() => setHighlightIdx(0)}
+                className={`w-full text-left px-3 py-2 text-sm transition ${
+                  highlightIdx === 0
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "hover:bg-secondary-soft"
+                }`}
+              >
+                <span className="text-muted-foreground">— Select —</span>
+              </button>
+            )}
+
+            {/* Material options */}
+            {filtered.map((name, i) => {
+              const mat = categoryMaterials.find((m) => m.name === name);
+              const isSelected = mat?.id === value;
+              const idx = (value ? 1 : 0) + i;
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (mat) selectMaterial(mat.id, mat.name);
+                  }}
+                  onMouseEnter={() => setHighlightIdx(idx)}
+                  className={`w-full text-left px-3 py-2 text-sm transition ${
+                    highlightIdx === idx
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "hover:bg-secondary-soft"
+                  } ${isSelected ? "bg-secondary-soft" : ""}`}
+                >
+                  {name}
+                </button>
+              );
+            })}
+
+            {/* Others option */}
+            {trimmedInput.length > 0 && !isExactMatch && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectMaterial(trimmedInput, trimmedInput);
+                }}
+                onMouseEnter={() =>
+                  setHighlightIdx((value ? 1 : 0) + filtered.length)
+                }
+                className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${
+                  highlightIdx === (value ? 1 : 0) + filtered.length
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "hover:bg-secondary-soft"
+                }`}
+              >
+                <span className="text-muted-foreground">Use custom: </span>
+                <span className="font-semibold">{trimmedInput}</span>
+              </button>
+            )}
+
+            {/* No results */}
+            {filtered.length === 0 && trimmedInput.length > 0 && !isExactMatch && (
+              <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
+                No matching materials found
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1303,6 +1539,32 @@ function Purchases() {
       ).data ?? [],
   });
 
+  // Materials for material autocomplete (filtered by category in component)
+  const { data: allMaterials } = useQuery({
+    queryKey: ["materials-lite"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("materials")
+          .select("id,name,category_id")
+          .eq("is_active", true)
+          .order("name")
+      ).data ?? [],
+  });
+
+  // Slots for slot selection
+  const { data: slotsList } = useQuery({
+    queryKey: ["slots-lite"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("slots")
+          .select("id,name,total_charges,packing_charges,freight_charges,other_charges,total_quantity")
+          .eq("is_active", true)
+          .order("name")
+      ).data ?? [],
+  });
+
   // Load drafts on mount
   useEffect(() => {
     setDrafts(loadDrafts());
@@ -1312,11 +1574,13 @@ function Purchases() {
   const saveAsDraft = useCallback(() => {
     if (rows.length === 0) return toast.error("No products to save");
     const draftId = activeDraftId || uid();
+    // Ensure all fields are preserved by merging with blankRow defaults
+    const safeRows = rows.map((r) => ({ ...blankRow(r.serial), ...r }));
     const draft: DraftEntry = {
       draft_id: draftId,
       created_at: activeDraftId ? (drafts.find((d) => d.draft_id === draftId)?.created_at || new Date().toISOString()) : new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      rows: recalcAllSlotCharges(rows),
+      rows: recalcAllSlotCharges(safeRows),
       slot_totals: slotTotals,
       label: makeDraftLabel(rows),
     };
@@ -1402,6 +1666,20 @@ function Purchases() {
           }
         }
       }
+      // Auto-recalculate slot charge when quantity changes (if slot is assigned)
+      if (patch.quantity !== undefined) {
+        const row = next[idx];
+        if (row.slot_id) {
+          const slot = (slotsList ?? []).find((s) => s.id === row.slot_id);
+          if (slot) {
+            const totalCharges = (slot.packing_charges ?? 0) + (slot.freight_charges ?? 0) + (slot.other_charges ?? 0);
+            const perUnit = (slot.total_quantity ?? 1) > 0 ? totalCharges / (slot.total_quantity ?? 1) : 0;
+            const qty = Number(row.quantity) || 0;
+            const slotCharge = Math.round(perUnit * qty * 100) / 100;
+            next[idx] = { ...next[idx], purchase_packing_freight_charge: slotCharge, slot_charge_per_product: slotCharge };
+          }
+        }
+      }
       // Handle slot changes: recalculate charges for affected slots
       if (patch.slot_id !== undefined || patch.slot_total_charge !== undefined) {
         const row = prev[idx];
@@ -1441,7 +1719,7 @@ function Purchases() {
       }
       return next;
     });
-  }, []);
+  }, [slotsList]);
 
   useEffect(() => { _patchRowRef = patchRow; }, [patchRow]);
 
@@ -1764,6 +2042,7 @@ function Purchases() {
 
   // Form definitions for the purchase entry form
   const FORM_FIELDS: { key: string; label: string; type: string; ro?: boolean; unitField?: string }[] = [
+    { key: "slot_id", label: "Slot", type: "select-slot-auto" },
     { key: "barcode", label: "Barcode", type: "text" },
     { key: "supply_id", label: "Supply Name", type: "select-supply" },
     { key: "supplier_name", label: "Supplier Name", type: "select-supplier" },
@@ -1772,16 +2051,14 @@ function Purchases() {
     { key: "image_url", label: "Image", type: "image" },
     { key: "date", label: "Date", type: "date" },
     { key: "name", label: "Product Name", type: "select-product-name" },
-    { key: "material", label: "Material", type: "text" },
+    { key: "material", label: "Material", type: "select-material" },
     { key: "colour", label: "Colour", type: "text" },
     { key: "per_packet_value", label: "Per Packet Value", type: "unit-pair", unitField: "per_packet_unit" },
     { key: "total_unit", label: "Total Unit", type: "unit-pair", unitField: "total_unit_type" },
     { key: "quantity", label: "Quantity", type: "number" },
     { key: "unit_price", label: "Unit Price", type: "number" },
     { key: "total_price", label: "Total Price", type: "number", ro: true },
-    { key: "purchase_packing_freight_charge", label: "Purchase, Packing & Freight Charges", type: "number" },
-    { key: "slot_id", label: "Slot", type: "select-slot" },
-    { key: "slot_total_charge", label: "Slot Charges", type: "slot-charge" },
+    { key: "purchase_packing_freight_charge", label: "Purchase, Packing & Freight Charges", type: "number", ro: true },
     { key: "other_charges", label: "Other Charges", type: "number" },
     { key: "total_unit_cost", label: "Total Unit Cost", type: "number", ro: true },
     { key: "final_purchase_cost", label: "Final Purchase Cost", type: "number", ro: true },
@@ -1906,10 +2183,70 @@ function Purchases() {
         return (
           <CategoryCombobox
             value={String(row[field] || "")}
-            onChange={(val) => patchRow(idx, { category_id: val })}
+            onChange={(val) => patchRow(idx, { category_id: val, material: "" })}
             categories={categories ?? []}
           />
         );
+      case "select-material":
+        return (
+          <MaterialCombobox
+            value={String(row.material || "")}
+            onChange={(val) => patchRow(idx, { material: val })}
+            categoryId={String(row.category_id || "")}
+            materials={allMaterials ?? []}
+          />
+        );
+      case "select-slot-auto": {
+        // Auto-calculate slot charge based on slot's per-unit charge and product quantity
+        const currentSlotId = String(row.slot_id || "");
+        const selectedSlot = (slotsList ?? []).find((s) => s.id === currentSlotId);
+        const qty = Number(row.quantity) || 0;
+        const perUnitCharge = selectedSlot
+          ? (((selectedSlot.packing_charges ?? 0) + (selectedSlot.freight_charges ?? 0) + (selectedSlot.other_charges ?? 0)) /
+             (selectedSlot.total_quantity ?? 1))
+          : 0;
+        const autoSlotCharge = Math.round(perUnitCharge * qty * 100) / 100;
+
+        return (
+          <div className="space-y-1">
+            <select
+              value={currentSlotId}
+              onChange={(e) => {
+                const val = e.target.value;
+                const slot = (slotsList ?? []).find((s) => s.id === val);
+                const slotPerUnit = slot
+                  ? (((slot.packing_charges ?? 0) + (slot.freight_charges ?? 0) + (slot.other_charges ?? 0)) /
+                     (slot.total_quantity ?? 1))
+                  : 0;
+                const productQty = Number(row.quantity) || 0;
+                const slotCharge = Math.round(slotPerUnit * productQty * 100) / 100;
+                patchRow(idx, {
+                  slot_id: val,
+                  slot_total_charge: slot?.total_charges ?? 0,
+                  slot_charge_per_product: slotCharge,
+                  purchase_packing_freight_charge: slotCharge,
+                });
+              }}
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            >
+              <option value="">— no slot —</option>
+              {(slotsList ?? []).map((s) => {
+                const sPerUnit = ((s.packing_charges ?? 0) + (s.freight_charges ?? 0) + (s.other_charges ?? 0)) / (s.total_quantity ?? 1);
+                return (
+                  <option key={s.id} value={s.id}>
+                    {s.name} (₹{sPerUnit.toFixed(2)}/unit)
+                  </option>
+                );
+              })}
+            </select>
+            {selectedSlot && qty > 0 && (
+              <div className="text-[10px] text-primary font-semibold">
+                Slot charge: {qty} × ₹{perUnitCharge.toFixed(2)} = ₹{autoSlotCharge.toFixed(2)}
+              </div>
+            )}
+          </div>
+        );
+      }
       case "select-slot": {
         const existingSlots = getSlotIds(rows);
         const currentSlotId = String(row.slot_id || "");

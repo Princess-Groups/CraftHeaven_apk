@@ -666,6 +666,38 @@ export type Database = {
           },
         ]
       }
+      materials: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "materials_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           address: string | null
@@ -742,6 +774,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      slots: {
+        Row: {
+          created_at: string
+          freight_charges: number | null
+          id: string
+          is_active: boolean | null
+          name: string
+          notes: string | null
+          other_charges: number | null
+          packing_charges: number | null
+          total_charges: number | null
+          total_quantity: number | null
+        }
+        Insert: {
+          created_at?: string
+          freight_charges?: number | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          notes?: string | null
+          other_charges?: number | null
+          packing_charges?: number | null
+          total_charges?: number | null
+          total_quantity?: number | null
+        }
+        Update: {
+          created_at?: string
+          freight_charges?: number | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          notes?: string | null
+          other_charges?: number | null
+          packing_charges?: number | null
+          total_charges?: number | null
+          total_quantity?: number | null
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
