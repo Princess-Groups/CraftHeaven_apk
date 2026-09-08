@@ -686,6 +686,241 @@ const ProductNameCombobox = memo(function ProductNameCombobox({
   );
 });
 
+// ---------- Category Combobox (typeahead searchable) ----------
+const CategoryCombobox = memo(function CategoryCombobox({
+  value,
+  onChange,
+  categories,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  categories: { id: string; name: string }[];
+}) {
+  const [inputVal, setInputVal] = useState(value || "");
+  const [open, setOpen] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Find the selected category name for display
+  const selectedCategory = useMemo(
+    () => categories?.find((c) => c.id === value),
+    [categories, value],
+  );
+
+  // Sync external value changes
+  useEffect(() => {
+    setInputVal(selectedCategory?.name || value || "");
+  }, [value, selectedCategory]);
+
+  // Build suggestion list: category names only
+  const allSuggestions = useMemo(() => {
+    const names: string[] = [];
+    for (const c of categories ?? []) {
+      if (c.name?.trim()) names.push(c.name.trim());
+    }
+    return names;
+  }, [categories]);
+
+  const filtered = useMemo(() => {
+    const q = inputVal.trim().toLowerCase();
+    if (!q) return allSuggestions;
+    return allSuggestions.filter((n) => n.toLowerCase().includes(q));
+  }, [inputVal, allSuggestions]);
+
+  const trimmedInput = inputVal.trim();
+  const isExactMatch =
+    trimmedInput.length > 0 &&
+    allSuggestions.some((n) => n.toLowerCase() === trimmedInput.toLowerCase());
+
+  function selectCategory(categoryId: string, categoryName: string) {
+    setInputVal(categoryName);
+    onChange(categoryId);
+    setOpen(false);
+    setHighlightIdx(-1);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!open) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+    // Layout: [Select (if value)] + filtered categories + [Others (if custom input)]
+    const hasSelectOption = value ? 1 : 0;
+    const hasOthersOption = trimmedInput.length > 0 && !isExactMatch ? 1 : 0;
+    const totalItems = hasSelectOption + filtered.length + hasOthersOption;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIdx((i) => (i + 1) % totalItems);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIdx((i) => (i - 1 + totalItems) % totalItems);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (hasSelectOption && highlightIdx === 0) {
+        selectCategory("", "");
+      } else if (
+        highlightIdx >= hasSelectOption &&
+        highlightIdx < hasSelectOption + filtered.length
+      ) {
+        const catIdx = highlightIdx - hasSelectOption;
+        const cat = categories?.find((c) => c.name === filtered[catIdx]);
+        if (cat) selectCategory(cat.id, cat.name);
+      } else if (
+        hasOthersOption &&
+        highlightIdx === hasSelectOption + filtered.length
+      ) {
+        selectCategory(trimmedInput, trimmedInput);
+      } else if (filtered.length === 1) {
+        const cat = categories?.find((c) => c.name === filtered[0]);
+        if (cat) selectCategory(cat.id, cat.name);
+      } else if (hasOthersOption) {
+        selectCategory(trimmedInput, trimmedInput);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setHighlightIdx(-1);
+    }
+  }
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <input
+        ref={inputRef}
+        type="text"
+        value={inputVal}
+        onChange={(e) => {
+          setInputVal(e.target.value);
+          setHighlightIdx(-1);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        placeholder="Type to search categories…"
+        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        autoComplete="off"
+      />
+      {open && (
+        <div
+          ref={listRef}
+          className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col"
+        >
+          {/* Search bar INSIDE the dropdown */}
+          <div className="flex items-center border-b px-3 shrink-0">
+            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+            <input
+              type="text"
+              value={inputVal}
+              onChange={(e) => {
+                setInputVal(e.target.value);
+                setHighlightIdx(-1);
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Search categories…"
+              className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+
+          {/* Options list */}
+          <div className="max-h-52 overflow-y-auto p-1">
+            {/* "Select" option — only shown when a value is selected */}
+            {value && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectCategory("", "");
+                }}
+                onMouseEnter={() => setHighlightIdx(0)}
+                className={`w-full text-left px-3 py-2 text-sm transition ${
+                  highlightIdx === 0
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "hover:bg-secondary-soft"
+                }`}
+              >
+                <span className="text-muted-foreground">— Select —</span>
+              </button>
+            )}
+
+            {/* Category options */}
+            {filtered.map((name, i) => {
+              const cat = categories?.find((c) => c.name === name);
+              const isSelected = cat?.id === value;
+              const idx = (value ? 1 : 0) + i;
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (cat) selectCategory(cat.id, cat.name);
+                  }}
+                  onMouseEnter={() => setHighlightIdx(idx)}
+                  className={`w-full text-left px-3 py-2 text-sm transition ${
+                    highlightIdx === idx
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "hover:bg-secondary-soft"
+                  } ${isSelected ? "bg-secondary-soft" : ""}`}
+                >
+                  {name}
+                </button>
+              );
+            })}
+
+            {/* "Others" option — shown when typed text doesn't match any category */}
+            {trimmedInput.length > 0 && !isExactMatch && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectCategory(trimmedInput, trimmedInput);
+                }}
+                onMouseEnter={() =>
+                  setHighlightIdx((value ? 1 : 0) + filtered.length)
+                }
+                className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${
+                  highlightIdx === (value ? 1 : 0) + filtered.length
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "hover:bg-secondary-soft"
+                }`}
+              >
+                <span className="text-muted-foreground">Use custom: </span>
+                <span className="font-semibold">{trimmedInput}</span>
+              </button>
+            )}
+
+            {/* No results message */}
+            {filtered.length === 0 &&
+              trimmedInput.length > 0 &&
+              !isExactMatch && (
+                <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
+                  No matching categories found
+                </div>
+              )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
 // ---------- Component ----------
 function Purchases() {
   const qc = useQueryClient();
@@ -716,7 +951,9 @@ function Purchases() {
         .single();
       if (!product) return toast.error("Product not found");
       const catName = product.category_id
-        ? (categories ?? []).find((c: { id: string; name: string }) => c.id === product.category_id)?.name ?? null
+        ? (categories ?? []).find((c: { id: string; name: string }) => c.id === product.category_id)?.name ??
+          (categories ?? []).find((c: { id: string; name: string }) => c.name.toLowerCase() === (product.category_id ?? "").toLowerCase())?.name ??
+          product.category_id
         : null;
       const assignedGst = autoAssignGst(product.name ?? "", catName, undefined, null);
       const newRow = {
@@ -860,7 +1097,9 @@ function Purchases() {
       if (patch.category_id !== undefined || patch.name !== undefined) {
         const row = next[idx];
         const catName = row.category_id
-          ? (categories ?? []).find((c: { id: string; name: string }) => c.id === row.category_id)?.name ?? null
+          ? (categories ?? []).find((c: { id: string; name: string }) => c.id === row.category_id)?.name ??
+            (categories ?? []).find((c: { id: string; name: string }) => c.name.toLowerCase() === (row.category_id ?? "").toLowerCase())?.name ??
+            row.category_id
           : null;
         // Only auto-assign if the user hasn't manually overridden GST (i.e., gst_rate wasn't in the patch)
         if (patch.gst_rate === undefined) {
@@ -1358,16 +1597,11 @@ function Purchases() {
         );
       case "select-category":
         return (
-          <select
-            value={String(row[field])}
-            onChange={(e) => patchRow(idx, { [field]: e.target.value })}
-            className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-          >
-            <option value="">— select —</option>
-            {(categories ?? []).map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <CategoryCombobox
+            value={String(row[field] || "")}
+            onChange={(val) => patchRow(idx, { category_id: val })}
+            categories={categories ?? []}
+          />
         );
       case "select-slot": {
         const existingSlots = getSlotIds(rows);
@@ -1725,7 +1959,9 @@ function Purchases() {
               onClick={() => {
                 const newIdx = rows.length;
                 const catName = p.category_id
-                  ? (categories ?? []).find((c: { id: string; name: string }) => c.id === p.category_id)?.name ?? null
+                  ? (categories ?? []).find((c: { id: string; name: string }) => c.id === p.category_id)?.name ??
+                    (categories ?? []).find((c: { id: string; name: string }) => c.name.toLowerCase() === (p.category_id ?? "").toLowerCase())?.name ??
+                    p.category_id
                   : null;
                 const assignedGst = autoAssignGst(p.name ?? "", catName, undefined, null);
                 setRows((prev) => [...prev, {
