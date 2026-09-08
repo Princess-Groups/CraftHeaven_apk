@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useMemo } from "react";
-import { Plus, Trash2, Search, Edit2, X, Loader2, Layers } from "lucide-react";
+import { Plus, Trash2, Search, Edit2, X, Loader2, Layers, Download } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/materials")({
@@ -119,6 +119,21 @@ function Materials() {
     toast.success("Material removed");
   }
 
+  function exportCSV() {
+    const headers = ["S.No", "Material Name", "Category"];
+    const csvRows = filtered.map((m, i) => [
+      i + 1, m.name, m.categories?.name ?? "",
+    ]);
+    const csv = [headers.join(","), ...csvRows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `materials-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Exported to CSV");
+  }
+
   // Group materials by category for display
   const materialsByCategory = useMemo(() => {
     const groups: Record<string, { category: string; materials: MaterialRow[] }> = {};
@@ -166,6 +181,12 @@ function Materials() {
           className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/90 transition"
         >
           <Plus className="h-3.5 w-3.5" /> Add Material
+        </button>
+        <button
+          onClick={exportCSV}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
+        >
+          <Download className="h-3.5 w-3.5" /> Export CSV
         </button>
       </div>
 

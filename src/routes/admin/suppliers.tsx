@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useMemo } from "react";
-import { Plus, Trash2, Search, Edit2, X, Loader2, Users } from "lucide-react";
+import { Plus, Trash2, Search, Edit2, X, Loader2, Users, Download } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/suppliers")({
@@ -122,6 +122,21 @@ function Suppliers() {
     toast.success("Supplier deleted");
   }
 
+  function exportCSV() {
+    const headers = ["S.No", "Name", "Phone", "Email", "GSTIN", "Address", "Notes"];
+    const csvRows = filtered.map((s, i) => [
+      i + 1, s.name, s.phone ?? "", s.email ?? "", s.gstin ?? "", s.address ?? "", s.notes ?? "",
+    ]);
+    const csv = [headers.join(","), ...csvRows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `suppliers-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Exported to CSV");
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -144,6 +159,12 @@ function Suppliers() {
           className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/90 transition"
         >
           <Plus className="h-3.5 w-3.5" /> Add Supplier
+        </button>
+        <button
+          onClick={exportCSV}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
+        >
+          <Download className="h-3.5 w-3.5" /> Export CSV
         </button>
       </div>
 

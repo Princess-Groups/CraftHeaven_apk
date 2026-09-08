@@ -15,6 +15,7 @@ import {
   Bell,
   ArrowRight,
   Trash2,
+  Download,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/inventory")({
@@ -149,6 +150,32 @@ function Inventory() {
     qc.invalidateQueries({ queryKey: ["inv"] });
   }
 
+  function exportCSV() {
+    const headers = [
+      "S.No", "Product", "Barcode", "SKU", "Category", "Current Stock", "Unit", "Min Stock", "Status",
+      "Purchase Price", "Selling Price", "Stock Value",
+    ];
+    const csvRows = inventoryProducts.map((p: any, i: number) => {
+      const isOut = p.stock <= 0;
+      const isLow = p.stock > 0 && p.stock <= (p.reorder_level ?? 5);
+      const status = isOut ? "Out of Stock" : isLow ? "Low Stock" : "In Stock";
+      const stockValue = (Number(p.purchase_price) || 0) * (Number(p.stock) || 0);
+      return [
+        i + 1, p.name ?? "", p.barcode ?? "", p.sku ?? "", p.categories?.name ?? "",
+        p.stock ?? 0, p.unit ?? "Nos", p.reorder_level ?? 5, status,
+        p.purchase_price ?? 0, p.price ?? 0, stockValue.toFixed(2),
+      ];
+    });
+    const csv = [headers.join(","), ...csvRows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Exported to CSV");
+  }
+
   function getStatus(p: any) {
     if (p.stock <= 0) return "out";
     if (p.stock <= (p.reorder_level ?? 5)) return "low";
@@ -160,6 +187,12 @@ function Inventory() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-bold text-foreground flex-1">Inventory</h1>
+        <button
+          onClick={exportCSV}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
+        >
+          <Download className="h-3.5 w-3.5" /> Export CSV
+        </button>
       </div>
 
       {/* View tabs */}
