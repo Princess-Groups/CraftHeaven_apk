@@ -234,29 +234,43 @@ function calcRow(r: ProductRow): ProductRow {
 // ---------- Slot charge calculation ----------
 // Recalculate per-product slot charges for a given slot.
 // Each product gets: perUnitCost × its own quantity
-function recalcSlotCharges(rows: ProductRow[], slotId: string, totalSlotCharge: number): ProductRow[] {
+function recalcSlotCharges(
+  rows: ProductRow[],
+  slotId: string,
+  totalSlotCharge: number,
+  perUnitCost: number,
+): ProductRow[] {
   if (!slotId) return rows;
   const slotProducts = rows.filter((r) => r.slot_id === slotId);
   if (slotProducts.length === 0) return rows;
-
-  // The per-unit cost is totalSlotCharge / total_slot_units from the slot
-  // But since we store totalSlotCharge as the slot's total_charges, and we don't have
-  // total_quantity here, we use the per-unit cost from the first product
-  const firstSlotProduct = slotProducts[0];
-  const perUnitCost = Number(firstSlotProduct.purchase_packing_freight_charge) || 0;
 
   return rows.map((r) => {
     if (r.slot_id === slotId) {
       const qty = Number(r.quantity) || 0;
       const totalPF = Math.round(perUnitCost * qty * 100) / 100;
-      return { ...r, slot_total_charge: totalSlotCharge, purchase_packing_freight_charge: perUnitCost, slot_charge_per_product: totalPF };
+      return {
+        ...r,
+        slot_total_charge: totalSlotCharge,
+        purchase_packing_freight_charge: perUnitCost,
+        slot_charge_per_product: totalPF,
+      };
     }
     return r;
   });
 }
 
+// Helper: compute per-unit cost from a slot
+function getSlotPerUnitCost(
+  slot: { packing_charges?: number | null; freight_charges?: number | null; other_charges?: number | null; total_quantity?: number | null } | undefined,
+): number {
+  if (!slot) return 0;
+  const total = (slot.packing_charges ?? 0) + (slot.freight_charges ?? 0) + (slot.other_charges ?? 0);
+  const qty = slot.total_quantity ?? 1;
+  return qty > 0 ? Math.round((total / qty) * 100) / 100 : 0;
+}
+
 // Recalculate all slot charges across all slots in the rows
-function recalcAllSlotCharges(rows: ProductRow[]): ProductRow[] {
+function recalcAllSlotCharges(rows: ProductRow[], slotsList: { id: string; packing_charges?: number | null; freight_charges?: number | null; other_charges?: number | null; total_quantity?: number | null }[]): ProductRow[] {
   // Build a map of slot_id -> total_slot_charge from the first product in each slot
   const slotTotals = new Map<string, number>();
   for (const r of rows) {
@@ -266,7 +280,9 @@ function recalcAllSlotCharges(rows: ProductRow[]): ProductRow[] {
   }
   let result = rows;
   Array.from(slotTotals.entries()).forEach(([slotId, totalCharge]) => {
-    result = recalcSlotCharges(result, slotId, totalCharge);
+    const slot = slotsList.find((s) => s.id === slotId);
+    const perUnit = getSlotPerUnitCost(slot);
+    result = recalcSlotCharges(result, slotId, totalCharge, perUnit);
   });
   return result;
 }
@@ -1574,7 +1590,7 @@ function Purchases() {
       draft_id: draftId,
       created_at: activeDraftId ? (drafts.find((d) => d.draft_id === draftId)?.created_at || new Date().toISOString()) : new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      rows: recalcAllSlotCharges(safeRows),
+      rows: recalcAllSlotCharges(safeRows, slotsList ?? []),
       slot_totals: slotTotals,
       label: makeDraftLabel(rows),
     };
@@ -1690,28 +1706,28 @@ function Purchases() {
           if (row.slot_id) {
             const oldProducts = next.filter((r) => r.slot_id === row.slot_id);
             if (oldProducts.length > 0) {
-              // Use the existing total charge from the first remaining product
               const oldTotalCharge = oldProducts[0].slot_total_charge || 0;
-              next = recalcSlotCharges(next, row.slot_id, oldTotalCharge);
+              const oldSlot = (slotsList ?? []).find((s) => s.id === row.slot_id);
+              next = recalcSlotCharges(next, row.slot_id, oldTotalCharge, getSlotPerUnitCost(oldSlot));
             }
           }
           // Update slot totals map
           if (newSlotId) {
-            // Check if this is a new slot or existing
             const existingProducts = next.filter((r) => r.slot_id === newSlotId);
+            const newSlot = (slotsList ?? []).find((s) => s.id === newSlotId);
+            const newPerUnit = getSlotPerUnitCost(newSlot);
             if (existingProducts.length <= 1) {
-              // First product in this slot - set the total charge
-              next = recalcSlotCharges(next, newSlotId, newTotalCharge || 0);
+              next = recalcSlotCharges(next, newSlotId, newTotalCharge || 0, newPerUnit);
             } else {
-              // Existing slot - recalculate with current total from first product
               const existingTotal = existingProducts[0].slot_total_charge || 0;
-              next = recalcSlotCharges(next, newSlotId, existingTotal);
+              next = recalcSlotCharges(next, newSlotId, existingTotal, newPerUnit);
             }
           }
         } else if (patch.slot_total_charge !== undefined) {
           // Only total charge changed - recalculate this slot
           if (newSlotId) {
-            next = recalcSlotCharges(next, newSlotId, newTotalCharge || 0);
+            const changedSlot = (slotsList ?? []).find((s) => s.id === newSlotId);
+            next = recalcSlotCharges(next, newSlotId, newTotalCharge || 0, getSlotPerUnitCost(changedSlot));
           }
         }
       }
@@ -1776,9 +1792,9 @@ function Purchases() {
       if (deletedRow?.slot_id) {
         const slotProducts = next.filter((r) => r.slot_id === deletedRow.slot_id);
         if (slotProducts.length > 0) {
-          // Use the existing total charge from the first remaining product
           const totalCharge = slotProducts[0].slot_total_charge || 0;
-          next = recalcSlotCharges(next, deletedRow.slot_id, totalCharge);
+          const delSlot = (slotsList ?? []).find((s) => s.id === deletedRow.slot_id);
+          next = recalcSlotCharges(next, deletedRow.slot_id, totalCharge, getSlotPerUnitCost(delSlot));
         }
       }
       return next;
@@ -1872,7 +1888,7 @@ function Purchases() {
     if (named.length === 0) return toast.error("At least one product must have a name");
     setSaving(true);
     try {
-      const recalcRows = recalcAllSlotCharges(rows);
+      const recalcRows = recalcAllSlotCharges(rows, slotsList ?? []);
 
       // Group products by supplier for the purchase record
       const supplierName = recalcRows.find((r) => r.supplier_name?.trim())?.supplier_name?.trim() || "";
