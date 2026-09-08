@@ -2855,6 +2855,72 @@ function Purchases() {
               )}
             </div>
 
+            {/* ===== SALES SUMMARY ===== */}
+            {activeRow && activeRow.name && (
+              <div className="mt-4 pt-3 border-t border-border">
+                <h3 className="text-sm font-bold text-foreground mb-3">Sales Summary</h3>
+                <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                  {/* Per Product Summary */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase">Product</span>
+                      <div className="font-semibold text-foreground">{activeRow.name}</div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase">Quantity</span>
+                      <div className="font-semibold text-foreground">{activeRow.quantity || 0} units</div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase">Purchase Price</span>
+                      <div className="font-semibold text-foreground">₹{(Number(activeRow.unit_price) || 0).toFixed(2)}/unit</div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase">Slot Charge</span>
+                      <div className="font-semibold text-primary">₹{(Number(activeRow.purchase_packing_freight_charge) || 0).toFixed(2)}/unit</div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase">Total Unit Cost</span>
+                      <div className="font-semibold text-foreground">₹{(Number(activeRow.total_unit_cost) || 0).toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase">Selling Price</span>
+                      <div className="font-semibold text-emerald-600">₹{(Number(activeRow.retail_selling_price) || 0).toFixed(2)}/unit</div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase">GST %</span>
+                      <div className="font-semibold text-foreground">{(Number(activeRow.gst_rate) || 0)}%</div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase">Profit %</span>
+                      <div className="font-semibold text-primary">{(Number(activeRow.profit_per_piece_pct) || 0).toFixed(2)}%</div>
+                    </div>
+                  </div>
+
+                  {/* Overall Totals */}
+                  <div className="pt-2 border-t border-border">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                      <div>
+                        <span className="text-[10px] text-muted-foreground uppercase">Total Purchase Cost</span>
+                        <div className="font-bold text-foreground">₹{(Number(activeRow.final_purchase_cost) || 0).toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-muted-foreground uppercase">Total GST</span>
+                        <div className="font-bold text-foreground">₹{(Number(activeRow.gst_amount) || 0).toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-muted-foreground uppercase">Total Selling Value</span>
+                        <div className="font-bold text-emerald-600">₹{((Number(activeRow.retail_selling_price) || 0) * (Number(activeRow.quantity) || 0)).toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-muted-foreground uppercase">Final Total</span>
+                        <div className="font-bold text-primary text-lg">₹{(Number(activeRow.total_final) || 0).toFixed(2)}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Save button at bottom */}
             <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-border">
               <button
