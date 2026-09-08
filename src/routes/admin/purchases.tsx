@@ -82,6 +82,7 @@ type ProductRow = {
   per_unit_total_charges: number;
   re_stock: number;
   gst_rate: number;
+  gst_is_custom: boolean;
   gst_amount: number;
   discount: number;
   total_final: number;
@@ -142,6 +143,7 @@ const blankRow = (serial: number): ProductRow => ({
   per_unit_total_charges: 0,
   re_stock: 0,
   gst_rate: 0,
+  gst_is_custom: false,
   gst_amount: 0,
   discount: 0,
   total_final: 0,
@@ -518,6 +520,172 @@ const SupplierCombobox = memo(function SupplierCombobox({
   );
 });
 
+// ---------- Product Name Autocomplete ----------
+const ProductNameCombobox = memo(function ProductNameCombobox({
+  value,
+  onChange,
+  categories,
+  existingProducts,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  categories: { id: string; name: string }[];
+  existingProducts: { id: string; name: string }[];
+}) {
+  const [inputVal, setInputVal] = useState(value || "");
+  const [open, setOpen] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Sync external value changes
+  useEffect(() => { setInputVal(value || ""); }, [value]);
+
+  // Build combined suggestion list: unique category names + product names
+  const allSuggestions = useMemo(() => {
+    const names = new Set<string>();
+    // Add category names first (higher priority)
+    for (const c of categories ?? []) {
+      if (c.name?.trim()) names.add(c.name.trim());
+    }
+    // Add existing product names
+    for (const p of existingProducts ?? []) {
+      if (p.name?.trim()) names.add(p.name.trim());
+    }
+    return Array.from(names);
+  }, [categories, existingProducts]);
+
+  const filtered = useMemo(() => {
+    const q = inputVal.trim().toLowerCase();
+    if (!q) return allSuggestions;
+    // Partial-word, case-insensitive matching
+    return allSuggestions.filter((n) => n.toLowerCase().includes(q));
+  }, [inputVal, allSuggestions]);
+
+  const trimmedInput = inputVal.trim();
+  const isExactMatch = trimmedInput.length > 0 && allSuggestions.some(
+    (n) => n.toLowerCase() === trimmedInput.toLowerCase()
+  );
+
+  function select(name: string) {
+    setInputVal(name);
+    onChange(name);
+    setOpen(false);
+    setHighlightIdx(-1);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!open) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+    // Total items: filtered suggestions + optional "use this value" option
+    const hasNewOption = trimmedInput.length > 0 && !isExactMatch;
+    const totalItems = filtered.length + (hasNewOption ? 1 : 0);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIdx((i) => (i + 1) % totalItems);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIdx((i) => (i - 1 + totalItems) % totalItems);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightIdx >= 0 && highlightIdx < filtered.length) {
+        select(filtered[highlightIdx]);
+      } else if (hasNewOption && highlightIdx === filtered.length) {
+        select(trimmedInput);
+      } else if (filtered.length === 1) {
+        select(filtered[0]);
+      } else if (hasNewOption) {
+        select(trimmedInput);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setHighlightIdx(-1);
+    }
+  }
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <input
+        ref={inputRef}
+        type="text"
+        value={inputVal}
+        onChange={(e) => {
+          setInputVal(e.target.value);
+          setHighlightIdx(-1);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        placeholder="Type to search materials…"
+        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        autoComplete="off"
+      />
+      {open && (
+        <div
+          ref={listRef}
+          className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-48 overflow-y-auto"
+        >
+          {filtered.length === 0 && !(trimmedInput.length > 0 && !isExactMatch) && (
+            <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
+              No matching materials found
+            </div>
+          )}
+          {filtered.map((name, i) => (
+            <button
+              key={name}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                select(name);
+              }}
+              onMouseEnter={() => setHighlightIdx(i)}
+              className={`w-full text-left px-3 py-2 text-sm transition ${
+                highlightIdx === i ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+          {trimmedInput.length > 0 && !isExactMatch && (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                select(trimmedInput);
+              }}
+              onMouseEnter={() => setHighlightIdx(filtered.length)}
+              className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${
+                highlightIdx === filtered.length ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"
+              }`}
+            >
+              <span className="text-muted-foreground">Use new name: </span>
+              <span className="font-semibold">{trimmedInput}</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 // ---------- Component ----------
 function Purchases() {
   const qc = useQueryClient();
@@ -558,6 +726,7 @@ function Purchases() {
         barcode: product.barcode ?? "",
         category_id: product.category_id ?? "",
         gst_rate: assignedGst,
+        gst_is_custom: false,
         retail_selling_price: Number(product.price ?? 0),
         unit_price: Number(product.purchase_price ?? 0),
         current_stock: Number(product.stock ?? 0),
@@ -697,7 +866,7 @@ function Purchases() {
         if (patch.gst_rate === undefined) {
           const autoRate = autoAssignGst(row.name ?? "", catName, undefined, null);
           if (autoRate > 0 && (row.gst_rate === 0 || row.gst_rate === null || row.gst_rate === undefined)) {
-            next[idx] = { ...next[idx], gst_rate: autoRate };
+            next[idx] = { ...next[idx], gst_rate: autoRate, gst_is_custom: false };
           }
         }
       }
@@ -1069,7 +1238,7 @@ function Purchases() {
     { key: "category_id", label: "Craft Material Category", type: "select-category" },
     { key: "image_url", label: "Image", type: "image" },
     { key: "date", label: "Date", type: "date" },
-    { key: "name", label: "Product Name", type: "text" },
+    { key: "name", label: "Product Name", type: "select-product-name" },
     { key: "material", label: "Material", type: "text" },
     { key: "colour", label: "Colour", type: "text" },
     { key: "per_packet_value", label: "Per Packet Value", type: "unit-pair", unitField: "per_packet_unit" },
@@ -1116,6 +1285,15 @@ function Purchases() {
   ) {
     const field = fieldDef.key as keyof ProductRow;
     switch (fieldDef.type) {
+      case "select-product-name":
+        return (
+          <ProductNameCombobox
+            value={String(row[field] || "")}
+            onChange={(val) => patchRow(idx, { name: val })}
+            categories={categories ?? []}
+            existingProducts={existingProducts ?? []}
+          />
+        );
       case "select-supplier":
         return (
           <SupplierCombobox
@@ -1137,17 +1315,45 @@ function Purchases() {
         );
       case "select-gst":
         return (
-          <div className="flex items-center gap-1">
-            <Percent className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
-            <select
-              value={Number(row.gst_rate) || 0}
-              onChange={(e) => patchRow(idx, { gst_rate: Number(e.target.value) })}
-              className="w-full rounded-lg border border-border bg-white px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-            >
-              {GST_RATES.map((r) => (
-                <option key={r} value={r}>{r}% — {GST_RATE_LABELS[r]?.split("—")[1]?.trim() || r}</option>
-              ))}
-            </select>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1">
+              <Percent className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+              <select
+                value={row.gst_is_custom ? "others" : String(Number(row.gst_rate) || 0)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "others") {
+                    patchRow(idx, { gst_is_custom: true, gst_rate: row.gst_rate || 0 });
+                  } else {
+                    patchRow(idx, { gst_is_custom: false, gst_rate: Number(val) });
+                  }
+                }}
+                className="w-full rounded-lg border border-border bg-white px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              >
+                {GST_RATES.map((r) => (
+                  <option key={r} value={r}>{r}% — {GST_RATE_LABELS[r]?.split("—")[1]?.trim() || r}</option>
+                ))}
+                <option value="others">Others — Custom %</option>
+              </select>
+            </div>
+            {row.gst_is_custom && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-semibold text-muted-foreground whitespace-nowrap">Enter GST %:</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={String(row.gst_rate || "")}
+                  onChange={(e) => {
+                    const v = Math.min(Math.max(Number(e.target.value) || 0, 0), 100);
+                    patchRow(idx, { gst_rate: v });
+                  }}
+                  placeholder="e.g. 2.5"
+                  className="flex-1 rounded-lg border border-primary/30 bg-primary/5 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right font-semibold"
+                />
+              </div>
+            )}
           </div>
         );
       case "select-category":
@@ -1529,6 +1735,7 @@ function Purchases() {
                   name: p.name ?? "",
                   category_id: p.category_id ?? "",
                   gst_rate: assignedGst,
+                  gst_is_custom: false,
                   current_stock: p.stock ?? 0,
                   minimum_stock: p.reorder_level ?? 5,
                   per_packet_unit: p.unit ?? "Nos",
