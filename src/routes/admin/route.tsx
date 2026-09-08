@@ -38,6 +38,7 @@ import {
   BellRing,
   Sliders,
   Boxes,
+  Package,
 } from "lucide-react";
 import { useState } from "react";
 const logoUrl = "/ach-logo.png";
@@ -68,6 +69,7 @@ export const Route = createFileRoute("/admin")({
 const NAV: { to: string; label: string; icon: React.ElementType; exact?: boolean }[] = [
   { to: "/admin/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/admin/purchases", label: "Purchase Entry", icon: ShoppingCart, exact: true },
+  { to: "/admin/supplies", label: "Supplies", icon: Package, exact: true },
   { to: "/admin/billing", label: "Billing", icon: ScanBarcode },
   { to: "/admin/orders", label: "Orders", icon: ClipboardList },
   { to: "/admin/categories", label: "Categories", icon: Tags },

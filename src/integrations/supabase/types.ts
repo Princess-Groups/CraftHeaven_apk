@@ -699,6 +699,50 @@ export type Database = {
         }
         Relationships: []
       }
+      supplies: {
+        Row: {
+          category: string | null
+          created_at: string
+          id: string
+          is_active: boolean | null
+          name: string
+          notes: string | null
+          rate: number | null
+          supplier_id: string | null
+          unit: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+          notes?: string | null
+          rate?: number | null
+          supplier_id?: string | null
+          unit?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          notes?: string | null
+          rate?: number | null
+          supplier_id?: string | null
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplies_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string

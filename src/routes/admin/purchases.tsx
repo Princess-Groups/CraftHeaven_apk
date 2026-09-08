@@ -44,6 +44,7 @@ type ProductRow = {
   barcode: string;
   supplier_name: string;
   supplier_bill_no: string;
+  supply_id: string;
   category_id: string;
   image_url: string;
   date: string;
@@ -105,6 +106,7 @@ const blankRow = (serial: number): ProductRow => ({
   barcode: "",
   supplier_name: "",
   supplier_bill_no: "",
+  supply_id: "",
   category_id: "",
   image_url: "",
   date: new Date().toISOString().slice(0, 10),
@@ -921,6 +923,284 @@ const CategoryCombobox = memo(function CategoryCombobox({
   );
 });
 
+// ---------- Supply Combobox (typeahead searchable) ----------
+const SupplyCombobox = memo(function SupplyCombobox({
+  value,
+  onChange,
+  onSupplierSelect,
+  supplies,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  onSupplierSelect: (supplier: { name: string; phone?: string; gstin?: string; address?: string } | null) => void;
+  supplies: {
+    id: string;
+    name: string;
+    category?: string | null;
+    unit?: string | null;
+    rate?: number | null;
+    supplier_id?: string | null;
+    suppliers?: { name: string; phone?: string | null; gstin?: string | null; address?: string | null } | null;
+  }[];
+}) {
+  const [inputVal, setInputVal] = useState(value || "");
+  const [open, setOpen] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Find the selected supply name for display
+  const selectedSupply = useMemo(
+    () => supplies?.find((s) => s.id === value),
+    [supplies, value],
+  );
+
+  // Sync external value changes
+  useEffect(() => {
+    setInputVal(selectedSupply?.name || value || "");
+  }, [value, selectedSupply]);
+
+  // Build suggestion list: supply names
+  const allSuggestions = useMemo(() => {
+    const names: string[] = [];
+    for (const s of supplies ?? []) {
+      if (s.name?.trim()) names.push(s.name.trim());
+    }
+    return names;
+  }, [supplies]);
+
+  const filtered = useMemo(() => {
+    const q = inputVal.trim().toLowerCase();
+    if (!q) return allSuggestions;
+    return allSuggestions.filter((n) => n.toLowerCase().includes(q));
+  }, [inputVal, allSuggestions]);
+
+  const trimmedInput = inputVal.trim();
+  const isExactMatch =
+    trimmedInput.length > 0 &&
+    allSuggestions.some((n) => n.toLowerCase() === trimmedInput.toLowerCase());
+
+  function selectSupply(supplyId: string, supplyName: string) {
+    setInputVal(supplyName);
+    onChange(supplyId);
+    // Auto-fill supplier details from the selected supply
+    const supply = supplies?.find((s) => s.id === supplyId);
+    if (supply?.suppliers) {
+      onSupplierSelect({
+        name: supply.suppliers.name ?? "",
+        phone: supply.suppliers.phone ?? undefined,
+        gstin: supply.suppliers.gstin ?? undefined,
+        address: supply.suppliers.address ?? undefined,
+      });
+    } else {
+      onSupplierSelect(null);
+    }
+    setOpen(false);
+    setHighlightIdx(-1);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!open) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+    // Layout: [Select (if value)] + filtered supplies + [Others (if custom input)]
+    const hasSelectOption = value ? 1 : 0;
+    const hasOthersOption = trimmedInput.length > 0 && !isExactMatch ? 1 : 0;
+    const totalItems = hasSelectOption + filtered.length + hasOthersOption;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIdx((i) => (i + 1) % totalItems);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIdx((i) => (i - 1 + totalItems) % totalItems);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (hasSelectOption && highlightIdx === 0) {
+        selectSupply("", "");
+      } else if (
+        highlightIdx >= hasSelectOption &&
+        highlightIdx < hasSelectOption + filtered.length
+      ) {
+        const idx = highlightIdx - hasSelectOption;
+        const supply = supplies?.find((s) => s.name === filtered[idx]);
+        if (supply) selectSupply(supply.id, supply.name);
+      } else if (
+        hasOthersOption &&
+        highlightIdx === hasSelectOption + filtered.length
+      ) {
+        onChange(trimmedInput);
+        onSupplierSelect(null);
+        setOpen(false);
+        setHighlightIdx(-1);
+      } else if (filtered.length === 1) {
+        const supply = supplies?.find((s) => s.name === filtered[0]);
+        if (supply) selectSupply(supply.id, supply.name);
+      } else if (hasOthersOption) {
+        onChange(trimmedInput);
+        onSupplierSelect(null);
+        setOpen(false);
+        setHighlightIdx(-1);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setHighlightIdx(-1);
+    }
+  }
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <input
+        ref={inputRef}
+        type="text"
+        value={inputVal}
+        onChange={(e) => {
+          setInputVal(e.target.value);
+          setHighlightIdx(-1);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        placeholder="Type to search supplies…"
+        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        autoComplete="off"
+      />
+      {open && (
+        <div
+          ref={listRef}
+          className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col"
+        >
+          {/* Search bar INSIDE the dropdown */}
+          <div className="flex items-center border-b px-3 shrink-0">
+            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+            <input
+              type="text"
+              value={inputVal}
+              onChange={(e) => {
+                setInputVal(e.target.value);
+                setHighlightIdx(-1);
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Search supplies…"
+              className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+
+          {/* Options list */}
+          <div className="max-h-52 overflow-y-auto p-1">
+            {/* "Select" option — only shown when a value is selected */}
+            {value && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectSupply("", "");
+                }}
+                onMouseEnter={() => setHighlightIdx(0)}
+                className={`w-full text-left px-3 py-2 text-sm transition ${
+                  highlightIdx === 0
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "hover:bg-secondary-soft"
+                }`}
+              >
+                <span className="text-muted-foreground">— Select —</span>
+              </button>
+            )}
+
+            {/* Supply options */}
+            {filtered.map((name, i) => {
+              const supply = supplies?.find((s) => s.name === name);
+              const isSelected = supply?.id === value;
+              const idx = (value ? 1 : 0) + i;
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (supply) selectSupply(supply.id, supply.name);
+                  }}
+                  onMouseEnter={() => setHighlightIdx(idx)}
+                  className={`w-full text-left px-3 py-2 text-sm transition ${
+                    highlightIdx === idx
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "hover:bg-secondary-soft"
+                  } ${isSelected ? "bg-secondary-soft" : ""}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span>{name}</span>
+                    {supply?.suppliers?.name && (
+                      <span className="text-[10px] text-muted-foreground ml-2">
+                        {supply.suppliers.name}
+                      </span>
+                    )}
+                  </div>
+                  {supply?.category && (
+                    <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+                      {supply.category}{supply.unit ? ` · ${supply.unit}` : ""}{supply.rate ? ` · ₹${supply.rate}` : ""}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+
+            {/* "Others" option — shown when typed text doesn't match any supply */}
+            {trimmedInput.length > 0 && !isExactMatch && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(trimmedInput);
+                  onSupplierSelect(null);
+                  setOpen(false);
+                  setHighlightIdx(-1);
+                }}
+                onMouseEnter={() =>
+                  setHighlightIdx((value ? 1 : 0) + filtered.length)
+                }
+                className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${
+                  highlightIdx === (value ? 1 : 0) + filtered.length
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "hover:bg-secondary-soft"
+                }`}
+              >
+                <span className="text-muted-foreground">Use custom: </span>
+                <span className="font-semibold">{trimmedInput}</span>
+              </button>
+            )}
+
+            {/* No results message */}
+            {filtered.length === 0 &&
+              trimmedInput.length > 0 &&
+              !isExactMatch && (
+                <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
+                  No matching supplies found
+                </div>
+              )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
 // ---------- Component ----------
 function Purchases() {
   const qc = useQueryClient();
@@ -1007,6 +1287,19 @@ function Purchases() {
           .from("products")
           .select("id,barcode,name,category_id,stock,reorder_level,unit,price,purchase_price,image_urls,sku,color_variations")
           .order("created_at", { ascending: false })
+      ).data ?? [],
+  });
+
+  // Supplies for supply name autocomplete
+  const { data: suppliesList } = useQuery({
+    queryKey: ["supplies-lite"],
+    queryFn: async () =>
+      (
+        await supabase
+          .from("supplies")
+          .select("id,name,category,unit,rate,supplier_id,suppliers(id,name,phone,gstin,address)")
+          .eq("is_active", true)
+          .order("name")
       ).data ?? [],
   });
 
@@ -1472,6 +1765,7 @@ function Purchases() {
   // Form definitions for the purchase entry form
   const FORM_FIELDS: { key: string; label: string; type: string; ro?: boolean; unitField?: string }[] = [
     { key: "barcode", label: "Barcode", type: "text" },
+    { key: "supply_id", label: "Supply Name", type: "select-supply" },
     { key: "supplier_name", label: "Supplier Name", type: "select-supplier" },
     { key: "supplier_bill_no", label: "Supplier Bill Number", type: "text" },
     { key: "category_id", label: "Craft Material Category", type: "select-category" },
@@ -1524,6 +1818,19 @@ function Purchases() {
   ) {
     const field = fieldDef.key as keyof ProductRow;
     switch (fieldDef.type) {
+      case "select-supply":
+        return (
+          <SupplyCombobox
+            value={String(row.supply_id || "")}
+            onChange={(val) => patchRow(idx, { supply_id: val })}
+            onSupplierSelect={(supplier) => {
+              if (supplier) {
+                patchRow(idx, { supplier_name: supplier.name });
+              }
+            }}
+            supplies={suppliesList ?? []}
+          />
+        );
       case "select-product-name":
         return (
           <ProductNameCombobox
