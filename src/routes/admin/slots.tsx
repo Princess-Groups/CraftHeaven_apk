@@ -32,11 +32,8 @@ function Slots() {
 
   const [form, setForm] = useState({
     name: "",
-    total_charges: 0,
-    packing_charges: 0,
-    freight_charges: 0,
-    other_charges: 0,
-    total_quantity: 0,
+    slot_total_amount: 0,
+    total_slot_units: 0,
     notes: "",
   });
 
@@ -65,7 +62,7 @@ function Slots() {
   }, [search, slots]);
 
   function resetForm() {
-    setForm({ name: "", total_charges: 0, packing_charges: 0, freight_charges: 0, other_charges: 0, total_quantity: 0, notes: "" });
+    setForm({ name: "", slot_total_amount: 0, total_slot_units: 0, notes: "" });
     setEditingId(null);
     setFormOpen(false);
   }
@@ -73,36 +70,35 @@ function Slots() {
   function startEdit(s: SlotRow) {
     setForm({
       name: s.name ?? "",
-      total_charges: s.total_charges ?? 0,
-      packing_charges: s.packing_charges ?? 0,
-      freight_charges: s.freight_charges ?? 0,
-      other_charges: s.other_charges ?? 0,
-      total_quantity: s.total_quantity ?? 0,
+      slot_total_amount: (s.packing_charges ?? 0) + (s.freight_charges ?? 0) + (s.other_charges ?? 0),
+      total_slot_units: s.total_quantity ?? 0,
       notes: s.notes ?? "",
     });
     setEditingId(s.id);
     setFormOpen(true);
   }
 
-  // Calculate per-unit charge
-  const perUnitCharge = useMemo(() => {
-    const totalCharges = (Number(form.packing_charges) || 0) + (Number(form.freight_charges) || 0) + (Number(form.other_charges) || 0);
-    const qty = Number(form.total_quantity) || 0;
-    return qty > 0 ? Math.round((totalCharges / qty) * 100) / 100 : 0;
-  }, [form.packing_charges, form.freight_charges, form.other_charges, form.total_quantity]);
+  // Calculate per-unit slot cost
+  const perUnitSlotCost = useMemo(() => {
+    const total = Number(form.slot_total_amount) || 0;
+    const units = Number(form.total_slot_units) || 0;
+    return units > 0 ? Math.round((total / units) * 100) / 100 : 0;
+  }, [form.slot_total_amount, form.total_slot_units]);
 
   async function saveSlot() {
-    if (!form.name.trim()) return toast.error("Slot name is required");
+    if (!form.name.trim()) return toast.error("Slot number/name is required");
     setSaving(true);
     try {
-      const totalCharges = (Number(form.packing_charges) || 0) + (Number(form.freight_charges) || 0) + (Number(form.other_charges) || 0);
+      const totalAmount = Number(form.slot_total_amount) || 0;
+      const totalUnits = Number(form.total_slot_units) || 0;
+      // Store total amount as total_charges (all charges combined)
       const payload = {
         name: form.name.trim(),
-        total_charges: totalCharges,
-        packing_charges: Number(form.packing_charges) || 0,
-        freight_charges: Number(form.freight_charges) || 0,
-        other_charges: Number(form.other_charges) || 0,
-        total_quantity: Number(form.total_quantity) || 0,
+        total_charges: totalAmount,
+        packing_charges: totalAmount, // Store total as packing (primary charge field)
+        freight_charges: 0,
+        other_charges: 0,
+        total_quantity: totalUnits,
         notes: form.notes.trim() || null,
         is_active: true,
       };
@@ -118,6 +114,7 @@ function Slots() {
       }
       resetForm();
       qc.invalidateQueries({ queryKey: ["slots"] });
+      qc.invalidateQueries({ queryKey: ["slots-lite"] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -129,6 +126,7 @@ function Slots() {
     const { error } = await supabase.from("slots").update({ is_active: false }).eq("id", id);
     if (error) return toast.error(error.message);
     qc.invalidateQueries({ queryKey: ["slots"] });
+    qc.invalidateQueries({ queryKey: ["slots-lite"] });
     toast.success("Slot removed");
   }
 
@@ -169,72 +167,41 @@ function Slots() {
             </button>
           </div>
           <div className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {/* Slot Name */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Slot Number */}
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Slot Name *</label>
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Slot Number *</label>
                 <input
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Slot 1, Slot A"
+                  placeholder="e.g. 1, 2, A"
                   className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 />
               </div>
 
-              {/* Total Quantity */}
+              {/* Slot Total Amount */}
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Quantity (units)</label>
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Slot Total Amount (₹) *</label>
                 <input
                   type="number"
                   min={0}
-                  value={form.total_quantity || ""}
-                  onChange={(e) => setForm({ ...form, total_quantity: Number(e.target.value) || 0 })}
+                  step="0.01"
+                  value={form.slot_total_amount || ""}
+                  onChange={(e) => setForm({ ...form, slot_total_amount: Number(e.target.value) || 0 })}
                   placeholder="e.g. 3000"
                   className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
                 />
               </div>
 
-              {/* Spacer */}
-              <div></div>
-
-              {/* Packing Charges */}
+              {/* Total Slot Units */}
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Packing Charges (₹)</label>
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Slot Units *</label>
                 <input
                   type="number"
                   min={0}
-                  step="0.01"
-                  value={form.packing_charges || ""}
-                  onChange={(e) => setForm({ ...form, packing_charges: Number(e.target.value) || 0 })}
-                  placeholder="0.00"
-                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
-                />
-              </div>
-
-              {/* Freight Charges */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Freight / Purchase Charges (₹)</label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={form.freight_charges || ""}
-                  onChange={(e) => setForm({ ...form, freight_charges: Number(e.target.value) || 0 })}
-                  placeholder="0.00"
-                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
-                />
-              </div>
-
-              {/* Other Charges */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Other Charges (₹)</label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={form.other_charges || ""}
-                  onChange={(e) => setForm({ ...form, other_charges: Number(e.target.value) || 0 })}
-                  placeholder="0.00"
+                  value={form.total_slot_units || ""}
+                  onChange={(e) => setForm({ ...form, total_slot_units: Number(e.target.value) || 0 })}
+                  placeholder="e.g. 3000"
                   className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
                 />
               </div>
@@ -257,27 +224,24 @@ function Slots() {
                 <Calculator className="h-4 w-4 text-primary" />
                 <span className="text-xs font-bold text-primary uppercase">Auto Calculation</span>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                 <div>
-                  <span className="text-[10px] text-muted-foreground uppercase">Total Charges</span>
+                  <span className="text-[10px] text-muted-foreground uppercase">Slot Total Amount</span>
                   <div className="font-bold text-foreground">
-                    ₹{((Number(form.packing_charges) || 0) + (Number(form.freight_charges) || 0) + (Number(form.other_charges) || 0)).toFixed(2)}
+                    ₹{(Number(form.slot_total_amount) || 0).toFixed(2)}
                   </div>
                 </div>
                 <div>
-                  <span className="text-[10px] text-muted-foreground uppercase">Total Quantity</span>
-                  <div className="font-bold text-foreground">{Number(form.total_quantity) || 0} units</div>
+                  <span className="text-[10px] text-muted-foreground uppercase">Total Slot Units</span>
+                  <div className="font-bold text-foreground">{Number(form.total_slot_units) || 0} units</div>
                 </div>
                 <div>
-                  <span className="text-[10px] text-muted-foreground uppercase">Per Unit Charge</span>
-                  <div className="font-bold text-primary text-lg">₹{perUnitCharge.toFixed(2)}</div>
+                  <span className="text-[10px] text-muted-foreground uppercase">Per Unit Slot Cost</span>
+                  <div className="font-bold text-primary text-lg">₹{perUnitSlotCost.toFixed(2)}</div>
                 </div>
-                <div>
-                  <span className="text-[10px] text-muted-foreground uppercase">Formula</span>
-                  <div className="text-xs text-muted-foreground">
-                    ₹{((Number(form.packing_charges) || 0) + (Number(form.freight_charges) || 0) + (Number(form.other_charges) || 0)).toFixed(2)} ÷ {Number(form.total_quantity) || 0} = ₹{perUnitCharge.toFixed(2)}/unit
-                  </div>
-                </div>
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                Formula: ₹{(Number(form.slot_total_amount) || 0).toFixed(2)} ÷ {Number(form.total_slot_units) || 0} = ₹{perUnitSlotCost.toFixed(2)}/unit
               </div>
             </div>
 
@@ -314,30 +278,24 @@ function Slots() {
             <thead className="bg-muted text-[11px] uppercase text-muted-foreground">
               <tr>
                 <th className="p-3 text-left w-10">#</th>
-                <th className="p-3 text-left">Slot Name</th>
-                <th className="p-3 text-right">Packing (₹)</th>
-                <th className="p-3 text-right">Freight (₹)</th>
-                <th className="p-3 text-right">Other (₹)</th>
-                <th className="p-3 text-right">Total (₹)</th>
-                <th className="p-3 text-center">Quantity</th>
-                <th className="p-3 text-right">Per Unit (₹)</th>
+                <th className="p-3 text-left">Slot Number</th>
+                <th className="p-3 text-right">Slot Total Amount (₹)</th>
+                <th className="p-3 text-center">Total Slot Units</th>
+                <th className="p-3 text-right">Per Unit Slot Cost (₹)</th>
                 <th className="p-3 text-right w-20">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((s, i) => {
-                const totalCharges = (s.packing_charges ?? 0) + (s.freight_charges ?? 0) + (s.other_charges ?? 0);
-                const qty = s.total_quantity ?? 0;
-                const perUnit = qty > 0 ? Math.round((totalCharges / qty) * 100) / 100 : 0;
+                const totalAmount = (s.packing_charges ?? 0) + (s.freight_charges ?? 0) + (s.other_charges ?? 0);
+                const units = s.total_quantity ?? 0;
+                const perUnit = units > 0 ? Math.round((totalAmount / units) * 100) / 100 : 0;
                 return (
                   <tr key={s.id} className="border-t border-border hover:bg-secondary-soft/30 transition">
                     <td className="p-3 text-xs font-semibold text-muted-foreground">{i + 1}</td>
                     <td className="p-3 font-medium text-sm">{s.name}</td>
-                    <td className="p-3 text-xs text-right">{(s.packing_charges ?? 0).toFixed(2)}</td>
-                    <td className="p-3 text-xs text-right">{(s.freight_charges ?? 0).toFixed(2)}</td>
-                    <td className="p-3 text-xs text-right">{(s.other_charges ?? 0).toFixed(2)}</td>
-                    <td className="p-3 text-xs text-right font-semibold">{totalCharges.toFixed(2)}</td>
-                    <td className="p-3 text-xs text-center">{qty}</td>
+                    <td className="p-3 text-xs text-right font-semibold">₹{totalAmount.toFixed(2)}</td>
+                    <td className="p-3 text-xs text-center">{units}</td>
                     <td className="p-3 text-xs text-right font-bold text-primary">₹{perUnit.toFixed(2)}</td>
                     <td className="p-3 text-right">
                       <div className="flex items-center justify-end gap-1">

@@ -6,7 +6,7 @@ import { Plus, Trash2, Search, Edit2, X, Loader2, Package } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/supplies")({
-  head: () => ({ meta: [{ title: "Supplies — ACH Admin" }] }),
+  head: () => ({ meta: [{ title: "Suppliers — ACH Admin" }] }),
   component: Supplies,
 });
 
@@ -151,7 +151,7 @@ function Supplies() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
           <Package className="h-5 w-5 text-primary" />
-          Supplies Master
+          Suppliers
         </h1>
         <div className="flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-1.5 shadow-sm flex-1 max-w-sm">
           <Search className="h-4 w-4 text-muted-foreground/70" />
