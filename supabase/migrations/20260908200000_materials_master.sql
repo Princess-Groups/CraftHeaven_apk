@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.materials (
 );
 
 -- Index for fast search
-CREATE INDEX IF NOT EXISTS idx_materials_name ON public.materials USING gin (name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_materials_name ON public.materials (name);
 CREATE INDEX IF NOT EXISTS idx_materials_category ON public.materials (category_id);
 CREATE INDEX IF NOT EXISTS idx_materials_active ON public.materials (is_active) WHERE is_active = true;
 

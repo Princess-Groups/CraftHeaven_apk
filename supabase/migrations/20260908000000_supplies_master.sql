@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS public.supplies (
 );
 
 -- Index for fast name search
-CREATE INDEX IF NOT EXISTS idx_supplies_name ON public.supplies USING gin (name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_supplies_name ON public.supplies (name);
 CREATE INDEX IF NOT EXISTS idx_supplies_active ON public.supplies (is_active) WHERE is_active = true;
 
 -- Enable Row Level Security
