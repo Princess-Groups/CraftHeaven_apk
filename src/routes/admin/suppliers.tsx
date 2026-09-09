@@ -84,6 +84,13 @@ function Suppliers() {
 
   async function saveSupplier() {
     if (!form.name.trim()) return toast.error("Supplier name is required");
+    // Check for duplicate (only when adding, not editing)
+    if (!editingId) {
+      const existing = (suppliers ?? []).find(
+        (s) => s.name?.toLowerCase() === form.name.trim().toLowerCase()
+      );
+      if (existing) return toast.error("A supplier with this name already exists");
+    }
     setSaving(true);
     try {
       const payload = {

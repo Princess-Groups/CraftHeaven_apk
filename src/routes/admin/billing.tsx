@@ -329,7 +329,37 @@ function Billing() {
     return total;
   }, [lines, categoryNameMap]);
 
-  const total = Math.max(0, subtotal + gst - discount + shippingCharge);
+  // Per-line final prices
+  const lineDetails = useMemo(() => {
+    return lines.map((l) => {
+      const unitPrice = Number(l.product.discount_price ?? l.product.price);
+      const lineSubtotal = unitPrice * l.qty;
+      const gstRate = getEffectiveGst(l);
+      const gstAmount = calcGstAmount(lineSubtotal, gstRate);
+      const productFinalPrice = Math.round((lineSubtotal + gstAmount) * 100) / 100;
+      const finalUnitPrice = l.qty > 0 ? Math.round((productFinalPrice / l.qty) * 100) / 100 : unitPrice;
+      return {
+        unitPrice,
+        lineSubtotal,
+        gstRate,
+        gstAmount,
+        productFinalPrice,
+        finalUnitPrice,
+      };
+    });
+  }, [lines, categoryNameMap]);
+
+  const totalFinalPrice = useMemo(
+    () => lineDetails.reduce((s, d) => s + d.productFinalPrice, 0),
+    [lineDetails],
+  );
+
+  const totalQuantity = useMemo(
+    () => lines.reduce((s, l) => s + l.qty, 0),
+    [lines],
+  );
+
+  const total = Math.max(0, totalFinalPrice - discount + shippingCharge);
 
   async function placeSale() {
     if (!lines.length) return toast.error("Add at least one product");
@@ -908,8 +938,10 @@ function Billing() {
                       </button>
                     </div>
                     <div className="text-right">
-                      <div className="text-[10px] text-muted-foreground/70">{l.product.unit ?? "Nos"}</div>
-                      <div className="text-sm font-bold text-foreground">₹{(price * l.qty).toFixed(2)}</div>
+                      <div className="text-[10px] text-muted-foreground/70">{l.product.unit ?? "Nos"} × {l.qty}</div>
+                      <div className="text-[10px] text-muted-foreground">Unit: ₹{price.toFixed(2)} + GST {lineDetails[i]?.gstRate ?? 0}%</div>
+                      <div className="text-[10px] text-primary font-semibold">Final: ₹{lineDetails[i]?.finalUnitPrice.toFixed(2)}/unit</div>
+                      <div className="text-sm font-bold text-foreground">₹{lineDetails[i]?.productFinalPrice.toFixed(2)}</div>
                     </div>
                   </div>
                 </div>
@@ -944,8 +976,20 @@ function Billing() {
           <>
             <div className="rounded-lg bg-muted p-3 text-xs space-y-2">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotal ({lines.length} items)</span>
+                <span className="text-muted-foreground">Subtotal ({lines.length} items, {totalQuantity} units)</span>
                 <span className="font-semibold">₹{subtotal.toFixed(2)}</span>
+              </div>
+
+              {/* Total GST */}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total GST</span>
+                <span className="font-semibold">₹{gst.toFixed(2)}</span>
+              </div>
+
+              {/* Total Before Discount */}
+              <div className="flex justify-between font-semibold">
+                <span>Total (before discount/shipping)</span>
+                <span>₹{totalFinalPrice.toFixed(2)}</span>
               </div>
 
               {/* Delivery Packing Charge */}
@@ -973,12 +1017,6 @@ function Billing() {
                   className="w-20 rounded border border-border px-2 py-0.5 text-right text-xs"
                   placeholder="0"
                 />
-              </div>
-
-              {/* GST */}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">GST</span>
-                <span className="font-semibold">₹{gst.toFixed(2)}</span>
               </div>
 
               {/* Discount */}
@@ -1023,11 +1061,16 @@ function Billing() {
             {/* Total Cash Received */}
             <div className="rounded-lg bg-emerald-50 p-3 text-center">
               <div className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold">
-                Total Cash Received
+                Total Final Price
               </div>
               <div className="text-xl font-extrabold text-emerald-800 mt-1">
                 ₹{total.toFixed(2)}
               </div>
+              {totalQuantity > 0 && (
+                <div className="text-[10px] text-emerald-600 mt-0.5">
+                  Single Unit Final Price: ₹{(total / totalQuantity).toFixed(2)}/unit · {totalQuantity} units
+                </div>
+              )}
               <div className="text-[10px] text-emerald-600 mt-0.5">
                 via {payment}
               </div>

@@ -61,9 +61,15 @@ function Categories() {
   // Add category (and optionally a material under it)
   async function add() {
     if (!name.trim()) return toast.error("Category name is required");
+    // Check for duplicate
+    const existing = (cats ?? []).find(
+      (c) => c.name?.toLowerCase() === name.trim().toLowerCase()
+    );
+    if (existing) return toast.error("A category with this name already exists");
     setSaving(true);
     try {
       const slug = name
+        .trim()
         .toLowerCase()
         .replace(/\s+/g, "-")
         .replace(/[^a-z0-9-]/g, "");

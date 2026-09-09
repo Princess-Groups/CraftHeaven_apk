@@ -38,7 +38,6 @@ import {
   BellRing,
   Sliders,
   Boxes,
-  Package,
   Box,
   Layers,
 } from "lucide-react";
@@ -71,7 +70,7 @@ export const Route = createFileRoute("/admin")({
 const NAV: { to: string; label: string; icon: React.ElementType; exact?: boolean }[] = [
   { to: "/admin/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/admin/purchases", label: "Purchase Entry", icon: ShoppingCart, exact: true },
-  { to: "/admin/supplies", label: "Suppliers", icon: Package, exact: true },
+  { to: "/admin/suppliers", label: "Suppliers", icon: Users, exact: true },
   { to: "/admin/slots", label: "Slot Management", icon: Box, exact: true },
   { to: "/admin/billing", label: "Billing", icon: ScanBarcode },
   { to: "/admin/orders", label: "Orders", icon: ClipboardList },

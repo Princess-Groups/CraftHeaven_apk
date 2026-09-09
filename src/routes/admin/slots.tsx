@@ -87,6 +87,14 @@ function Slots() {
 
   async function saveSlot() {
     if (!form.name.trim()) return toast.error("Slot number/name is required");
+    if (Number(form.total_slot_units) <= 0) return toast.error("Total slot units must be greater than 0");
+    // Check for duplicate (only when adding, not editing)
+    if (!editingId) {
+      const existing = (slots ?? []).find(
+        (s) => s.name?.toLowerCase() === form.name.trim().toLowerCase()
+      );
+      if (existing) return toast.error("A slot with this name already exists");
+    }
     setSaving(true);
     try {
       const totalAmount = Number(form.slot_total_amount) || 0;

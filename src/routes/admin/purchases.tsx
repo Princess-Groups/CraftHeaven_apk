@@ -44,7 +44,6 @@ type ProductRow = {
   barcode: string;
   supplier_name: string;
   supplier_bill_no: string;
-  supply_id: string;
   category_id: string;
   image_url: string;
   date: string;
@@ -106,7 +105,6 @@ const blankRow = (serial: number): ProductRow => ({
   barcode: "",
   supplier_name: "",
   supplier_bill_no: "",
-  supply_id: "",
   category_id: "",
   image_url: "",
   date: new Date().toISOString().slice(0, 10),
@@ -394,17 +392,25 @@ const SupplierCombobox = memo(function SupplierCombobox({
   value,
   onChange,
   suppliers,
+  onSupplierAdded,
 }: {
   value: string;
   onChange: (val: string) => void;
   suppliers: { id: string; name: string }[];
+  onSupplierAdded?: () => void;
 }) {
   const [inputVal, setInputVal] = useState(value || "");
   const [open, setOpen] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(-1);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newSupName, setNewSupName] = useState("");
+  const [newSupPhone, setNewSupPhone] = useState("");
+  const [newSupGstin, setNewSupGstin] = useState("");
+  const [savingNew, setSavingNew] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const qc = useQueryClient();
 
   // Sync external value changes
   useEffect(() => { setInputVal(value || ""); }, [value]);
@@ -427,6 +433,37 @@ const SupplierCombobox = memo(function SupplierCombobox({
     setHighlightIdx(-1);
   }
 
+  async function addNewSupplier() {
+    if (!newSupName.trim()) return toast.error("Supplier name is required");
+    // Check duplicate
+    const dup = suppliers?.find((s) => s.name?.toLowerCase() === newSupName.trim().toLowerCase());
+    if (dup) return toast.error("A supplier with this name already exists");
+    setSavingNew(true);
+    try {
+      const payload = {
+        name: newSupName.trim(),
+        phone: newSupPhone.trim() || null,
+        gstin: newSupGstin.trim() || null,
+      };
+      const { error } = await supabase.from("suppliers").insert(payload);
+      if (error) throw error;
+      toast.success("Supplier added");
+      qc.invalidateQueries({ queryKey: ["suppliers-lite"] });
+      qc.invalidateQueries({ queryKey: ["sup"] });
+      if (onSupplierAdded) onSupplierAdded();
+      // Auto-select the new supplier
+      select(newSupName.trim());
+      setShowAddModal(false);
+      setNewSupName("");
+      setNewSupPhone("");
+      setNewSupGstin("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add supplier");
+    } finally {
+      setSavingNew(false);
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (!open) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -447,11 +484,16 @@ const SupplierCombobox = memo(function SupplierCombobox({
       if (highlightIdx >= 0 && highlightIdx < filtered.length) {
         select(filtered[highlightIdx].name);
       } else if (isNew && highlightIdx === filtered.length) {
-        select(trimmedInput);
+        // Open add modal instead of just selecting
+        setNewSupName(trimmedInput);
+        setShowAddModal(true);
+        setOpen(false);
       } else if (filtered.length === 1) {
         select(filtered[0].name);
       } else if (isNew) {
-        select(trimmedInput);
+        setNewSupName(trimmedInput);
+        setShowAddModal(true);
+        setOpen(false);
       }
     } else if (e.key === "Escape") {
       setOpen(false);
@@ -472,67 +514,124 @@ const SupplierCombobox = memo(function SupplierCombobox({
   }, [open]);
 
   return (
-    <div ref={wrapperRef} className="relative">
-      <input
-        ref={inputRef}
-        type="text"
-        value={inputVal}
-        onChange={(e) => {
-          setInputVal(e.target.value);
-          setHighlightIdx(-1);
-          if (!open) setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={handleKeyDown}
-        placeholder="Type to search supplier…"
-        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-        autoComplete="off"
-      />
-      {open && (
-        <div
-          ref={listRef}
-          className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-48 overflow-y-auto"
-        >
-          {filtered.length === 0 && !isNew && (
-            <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
-              No suppliers found
+    <>
+      <div ref={wrapperRef} className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputVal}
+          onChange={(e) => {
+            setInputVal(e.target.value);
+            setHighlightIdx(-1);
+            if (!open) setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type to search supplier…"
+          className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          autoComplete="off"
+        />
+        {open && (
+          <div
+            ref={listRef}
+            className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-48 overflow-y-auto"
+          >
+            {filtered.length === 0 && !isNew && (
+              <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
+                No suppliers found
+              </div>
+            )}
+            {filtered.map((s, i) => (
+              <button
+                key={s.id}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  select(s.name);
+                }}
+                onMouseEnter={() => setHighlightIdx(i)}
+                className={`w-full text-left px-3 py-2 text-sm transition ${
+                  highlightIdx === i ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"
+                }`}
+              >
+                {s.name}
+              </button>
+            ))}
+            {isNew && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setNewSupName(trimmedInput);
+                  setShowAddModal(true);
+                  setOpen(false);
+                }}
+                onMouseEnter={() => setHighlightIdx(filtered.length)}
+                className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${
+                  highlightIdx === filtered.length ? "bg-emerald-50 text-emerald-700 font-medium" : "hover:bg-emerald-50"
+                }`}
+              >
+                <span className="text-emerald-600">+ Add new supplier: </span>
+                <span className="font-semibold">{trimmedInput}</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {/* Inline Add Supplier Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onMouseDown={() => { setShowAddModal(false); setNewSupName(""); setNewSupPhone(""); setNewSupGstin(""); }}>
+          <div className="bg-white rounded-xl shadow-2xl border border-border w-full max-w-sm p-4 space-y-3" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-foreground">Add New Supplier</h3>
+              <button onClick={() => { setShowAddModal(false); setNewSupName(""); setNewSupPhone(""); setNewSupGstin(""); }} className="rounded p-1 hover:bg-muted">
+                <X className="h-4 w-4 text-muted-foreground" />
+              </button>
             </div>
-          )}
-          {filtered.map((s, i) => (
-            <button
-              key={s.id}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                select(s.name);
-              }}
-              onMouseEnter={() => setHighlightIdx(i)}
-              className={`w-full text-left px-3 py-2 text-sm transition ${
-                highlightIdx === i ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"
-              }`}
-            >
-              {s.name}
-            </button>
-          ))}
-          {isNew && (
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                select(trimmedInput);
-              }}
-              onMouseEnter={() => setHighlightIdx(filtered.length)}
-              className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${
-                highlightIdx === filtered.length ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"
-              }`}
-            >
-              <span className="text-muted-foreground">Add new: </span>
-              <span className="font-semibold">{trimmedInput}</span>
-            </button>
-          )}
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Supplier Name *</label>
+                <input
+                  value={newSupName}
+                  onChange={(e) => setNewSupName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") addNewSupplier(); }}
+                  placeholder="e.g. ABC Traders"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Phone</label>
+                <input
+                  value={newSupPhone}
+                  onChange={(e) => setNewSupPhone(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") addNewSupplier(); }}
+                  placeholder="e.g. 9876543210"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">GSTIN</label>
+                <input
+                  value={newSupGstin}
+                  onChange={(e) => setNewSupGstin(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") addNewSupplier(); }}
+                  placeholder="e.g. 27AABCU9603R1ZM"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <button onClick={() => { setShowAddModal(false); setNewSupName(""); setNewSupPhone(""); setNewSupGstin(""); }} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition">Cancel</button>
+              <button onClick={addNewSupplier} disabled={savingNew || !newSupName.trim()} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition">
+                {savingNew ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                {savingNew ? "Adding…" : "Add Supplier"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 });
 
@@ -702,21 +801,27 @@ const ProductNameCombobox = memo(function ProductNameCombobox({
   );
 });
 
-// ---------- Category Combobox (typeahead searchable) ----------
+// ---------- Category Combobox (typeahead searchable with + Add) ----------
 const CategoryCombobox = memo(function CategoryCombobox({
   value,
   onChange,
   categories,
+  onCategoryAdded,
 }: {
   value: string;
   onChange: (val: string) => void;
   categories: { id: string; name: string }[];
+  onCategoryAdded?: () => void;
 }) {
   const [inputVal, setInputVal] = useState("");
   const [open, setOpen] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(-1);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [savingNew, setSavingNew] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const qc = useQueryClient();
 
   // Compute display name from value (category_id)
   const displayName = useMemo(() => {
@@ -755,6 +860,37 @@ const CategoryCombobox = memo(function CategoryCombobox({
     onChange(categoryId);
   }
 
+  async function addNewCategory() {
+    if (!newCatName.trim()) return toast.error("Category name is required");
+    // Check duplicate
+    const dup = categories?.find((c) => c.name?.toLowerCase() === newCatName.trim().toLowerCase());
+    if (dup) return toast.error("A category with this name already exists");
+    setSavingNew(true);
+    try {
+      const slug = newCatName.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+      const { data: newCat, error } = await supabase
+        .from("categories")
+        .insert({ name: newCatName.trim(), slug })
+        .select("id,name")
+        .single();
+      if (error) throw error;
+      toast.success("Category added");
+      qc.invalidateQueries({ queryKey: ["cats-lite"] });
+      qc.invalidateQueries({ queryKey: ["admin-cats"] });
+      if (onCategoryAdded) onCategoryAdded();
+      // Auto-select the newly created category
+      if (newCat) {
+        selectCategory(newCat.id, newCat.name);
+      }
+      setShowAddModal(false);
+      setNewCatName("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add category");
+    } finally {
+      setSavingNew(false);
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (!open) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -763,9 +899,10 @@ const CategoryCombobox = memo(function CategoryCombobox({
       }
       return;
     }
+    // Layout: [Select (if value)] + filtered + [Add New (if custom input)]
     const hasSelectOption = value ? 1 : 0;
-    const hasOthersOption = trimmedInput.length > 0 && !isExactMatch ? 1 : 0;
-    const totalItems = hasSelectOption + filtered.length + hasOthersOption;
+    const hasAddNew = trimmedInput.length > 0 && !isExactMatch ? 1 : 0;
+    const totalItems = hasSelectOption + filtered.length + hasAddNew;
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -777,23 +914,22 @@ const CategoryCombobox = memo(function CategoryCombobox({
       e.preventDefault();
       if (hasSelectOption && highlightIdx === 0) {
         selectCategory("", "");
-      } else if (
-        highlightIdx >= hasSelectOption &&
-        highlightIdx < hasSelectOption + filtered.length
-      ) {
+      } else if (highlightIdx >= hasSelectOption && highlightIdx < hasSelectOption + filtered.length) {
         const catIdx = highlightIdx - hasSelectOption;
         const cat = categories?.find((c) => c.name === filtered[catIdx]);
         if (cat) selectCategory(cat.id, cat.name);
-      } else if (
-        hasOthersOption &&
-        highlightIdx === hasSelectOption + filtered.length
-      ) {
-        selectCategory(trimmedInput, trimmedInput);
+      } else if (hasAddNew && highlightIdx === hasSelectOption + filtered.length) {
+        // Trigger the add new modal
+        setNewCatName(trimmedInput);
+        setShowAddModal(true);
+        setOpen(false);
       } else if (filtered.length === 1) {
         const cat = categories?.find((c) => c.name === filtered[0]);
         if (cat) selectCategory(cat.id, cat.name);
-      } else if (hasOthersOption) {
-        selectCategory(trimmedInput, trimmedInput);
+      } else if (hasAddNew) {
+        setNewCatName(trimmedInput);
+        setShowAddModal(true);
+        setOpen(false);
       }
     } else if (e.key === "Escape") {
       setOpen(false);
@@ -814,138 +950,146 @@ const CategoryCombobox = memo(function CategoryCombobox({
   }, [open]);
 
   return (
-    <div ref={wrapperRef} className="relative">
-      <input
-        ref={inputRef}
-        type="text"
-        value={effectiveInputVal}
-        onChange={(e) => {
-          setInputVal(e.target.value);
-          setHighlightIdx(-1);
-          if (!open) setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={handleKeyDown}
-        placeholder="Type to search categories…"
-        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-        autoComplete="off"
-      />
-      {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col">
-          {/* Search bar inside dropdown */}
-          <div className="flex items-center border-b px-3 shrink-0">
-            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-            <input
-              type="text"
-              value={inputVal}
-              onChange={(e) => {
-                setInputVal(e.target.value);
-                setHighlightIdx(-1);
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder="Search categories…"
-              className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-
-          {/* Options list */}
-          <div className="max-h-52 overflow-y-auto p-1">
-            {/* Select option */}
-            {value && (
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  selectCategory("", "");
+    <>
+      <div ref={wrapperRef} className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={effectiveInputVal}
+          onChange={(e) => {
+            setInputVal(e.target.value);
+            setHighlightIdx(-1);
+            if (!open) setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type to search categories…"
+          className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          autoComplete="off"
+        />
+        {open && (
+          <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col">
+            <div className="flex items-center border-b px-3 shrink-0">
+              <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+              <input
+                type="text"
+                value={inputVal}
+                onChange={(e) => {
+                  setInputVal(e.target.value);
+                  setHighlightIdx(-1);
                 }}
-                onMouseEnter={() => setHighlightIdx(0)}
-                className={`w-full text-left px-3 py-2 text-sm transition ${
-                  highlightIdx === 0
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "hover:bg-secondary-soft"
-                }`}
-              >
-                <span className="text-muted-foreground">— Select —</span>
-              </button>
-            )}
-
-            {/* Category options */}
-            {filtered.map((name, i) => {
-              const cat = categories?.find((c) => c.name === name);
-              const isSelected = cat?.id === value;
-              const idx = (value ? 1 : 0) + i;
-              return (
+                onKeyDown={handleKeyDown}
+                placeholder="Search categories…"
+                className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+            <div className="max-h-52 overflow-y-auto p-1">
+              {value && (
                 <button
-                  key={name}
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); selectCategory("", ""); }}
+                  onMouseEnter={() => setHighlightIdx(0)}
+                  className={`w-full text-left px-3 py-2 text-sm transition ${highlightIdx === 0 ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"}`}
+                >
+                  <span className="text-muted-foreground">— Select —</span>
+                </button>
+              )}
+              {filtered.map((name, i) => {
+                const cat = categories?.find((c) => c.name === name);
+                const isSelected = cat?.id === value;
+                const idx = (value ? 1 : 0) + i;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onMouseDown={(e) => { e.preventDefault(); if (cat) selectCategory(cat.id, cat.name); }}
+                    onMouseEnter={() => setHighlightIdx(idx)}
+                    className={`w-full text-left px-3 py-2 text-sm transition ${highlightIdx === idx ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"} ${isSelected ? "bg-secondary-soft" : ""}`}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+              {trimmedInput.length > 0 && !isExactMatch && (
+                <button
                   type="button"
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    if (cat) selectCategory(cat.id, cat.name);
+                    setNewCatName(trimmedInput);
+                    setShowAddModal(true);
+                    setOpen(false);
                   }}
-                  onMouseEnter={() => setHighlightIdx(idx)}
-                  className={`w-full text-left px-3 py-2 text-sm transition ${
-                    highlightIdx === idx
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "hover:bg-secondary-soft"
-                  } ${isSelected ? "bg-secondary-soft" : ""}`}
+                  onMouseEnter={() => setHighlightIdx((value ? 1 : 0) + filtered.length)}
+                  className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${highlightIdx === (value ? 1 : 0) + filtered.length ? "bg-emerald-50 text-emerald-700 font-medium" : "hover:bg-emerald-50"}`}
                 >
-                  {name}
+                  <span className="text-emerald-600">+ Add new: </span>
+                  <span className="font-semibold">{trimmedInput}</span>
                 </button>
-              );
-            })}
-
-            {/* Others option */}
-            {trimmedInput.length > 0 && !isExactMatch && (
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  selectCategory(trimmedInput, trimmedInput);
-                }}
-                onMouseEnter={() =>
-                  setHighlightIdx((value ? 1 : 0) + filtered.length)
-                }
-                className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${
-                  highlightIdx === (value ? 1 : 0) + filtered.length
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "hover:bg-secondary-soft"
-                }`}
-              >
-                <span className="text-muted-foreground">Use custom: </span>
-                <span className="font-semibold">{trimmedInput}</span>
+              )}
+              {filtered.length === 0 && trimmedInput.length > 0 && !isExactMatch && (
+                <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
+                  No matching categories found
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      {/* Inline Add Category Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onMouseDown={() => { setShowAddModal(false); setNewCatName(""); }}>
+          <div className="bg-white rounded-xl shadow-2xl border border-border w-full max-w-sm p-4 space-y-3" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-foreground">Add New Category</h3>
+              <button onClick={() => { setShowAddModal(false); setNewCatName(""); }} className="rounded p-1 hover:bg-muted">
+                <X className="h-4 w-4 text-muted-foreground" />
               </button>
-            )}
-
-            {/* No results */}
-            {filtered.length === 0 && trimmedInput.length > 0 && !isExactMatch && (
-              <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
-                No matching categories found
-              </div>
-            )}
+            </div>
+            <input
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addNewCategory(); }}
+              placeholder="Category name *"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setShowAddModal(false); setNewCatName(""); }} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition">Cancel</button>
+              <button onClick={addNewCategory} disabled={savingNew || !newCatName.trim()} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition">
+                {savingNew ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                {savingNew ? "Adding…" : "Add Category"}
+              </button>
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 });
 
-// ---------- Material Combobox (filtered by category) ----------
+// ---------- Material Combobox (filtered by category, with + Add) ----------
 const MaterialCombobox = memo(function MaterialCombobox({
   value,
   onChange,
   categoryId,
   materials,
+  onMaterialAdded,
 }: {
   value: string;
   onChange: (val: string) => void;
   categoryId: string;
   materials: { id: string; name: string; category_id: string | null }[];
+  onMaterialAdded?: () => void;
 }) {
   const [inputVal, setInputVal] = useState("");
   const [open, setOpen] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(-1);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newMatName, setNewMatName] = useState("");
+  const [savingNew, setSavingNew] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const qc = useQueryClient();
 
   // Filter materials by selected category
   const categoryMaterials = useMemo(() => {
@@ -994,6 +1138,38 @@ const MaterialCombobox = memo(function MaterialCombobox({
     setHighlightIdx(-1);
   }
 
+  async function addNewMaterial() {
+    if (!newMatName.trim()) return toast.error("Material name is required");
+    if (!categoryId) return toast.error("Please select a category first");
+    // Check duplicate
+    const dup = materials?.find(
+      (m) => m.name?.toLowerCase() === newMatName.trim().toLowerCase() && m.category_id === categoryId
+    );
+    if (dup) return toast.error("A material with this name already exists in this category");
+    setSavingNew(true);
+    try {
+      const { data: newMat, error } = await supabase
+        .from("materials")
+        .insert({ name: newMatName.trim(), category_id: categoryId, is_active: true })
+        .select("id,name")
+        .single();
+      if (error) throw error;
+      toast.success("Material added");
+      qc.invalidateQueries({ queryKey: ["materials-lite"] });
+      qc.invalidateQueries({ queryKey: ["admin-materials"] });
+      if (onMaterialAdded) onMaterialAdded();
+      if (newMat) {
+        selectMaterial(newMat.id, newMat.name);
+      }
+      setShowAddModal(false);
+      setNewMatName("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add material");
+    } finally {
+      setSavingNew(false);
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (!open) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -1003,8 +1179,8 @@ const MaterialCombobox = memo(function MaterialCombobox({
       return;
     }
     const hasSelectOption = value ? 1 : 0;
-    const hasOthersOption = trimmedInput.length > 0 && !isExactMatch ? 1 : 0;
-    const totalItems = hasSelectOption + filtered.length + hasOthersOption;
+    const hasAddNew = trimmedInput.length > 0 && !isExactMatch ? 1 : 0;
+    const totalItems = hasSelectOption + filtered.length + hasAddNew;
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -1016,23 +1192,21 @@ const MaterialCombobox = memo(function MaterialCombobox({
       e.preventDefault();
       if (hasSelectOption && highlightIdx === 0) {
         selectMaterial("", "");
-      } else if (
-        highlightIdx >= hasSelectOption &&
-        highlightIdx < hasSelectOption + filtered.length
-      ) {
+      } else if (highlightIdx >= hasSelectOption && highlightIdx < hasSelectOption + filtered.length) {
         const matIdx = highlightIdx - hasSelectOption;
         const mat = categoryMaterials.find((m) => m.name === filtered[matIdx]);
         if (mat) selectMaterial(mat.id, mat.name);
-      } else if (
-        hasOthersOption &&
-        highlightIdx === hasSelectOption + filtered.length
-      ) {
-        selectMaterial(trimmedInput, trimmedInput);
+      } else if (hasAddNew && highlightIdx === hasSelectOption + filtered.length) {
+        setNewMatName(trimmedInput);
+        setShowAddModal(true);
+        setOpen(false);
       } else if (filtered.length === 1) {
         const mat = categoryMaterials.find((m) => m.name === filtered[0]);
         if (mat) selectMaterial(mat.id, mat.name);
-      } else if (hasOthersOption) {
-        selectMaterial(trimmedInput, trimmedInput);
+      } else if (hasAddNew) {
+        setNewMatName(trimmedInput);
+        setShowAddModal(true);
+        setOpen(false);
       }
     } else if (e.key === "Escape") {
       setOpen(false);
@@ -1053,397 +1227,105 @@ const MaterialCombobox = memo(function MaterialCombobox({
   }, [open]);
 
   return (
-    <div ref={wrapperRef} className="relative">
-      <input
-        ref={inputRef}
-        type="text"
-        value={inputVal}
-        onChange={(e) => {
-          setInputVal(e.target.value);
-          setHighlightIdx(-1);
-          if (!open) setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={handleKeyDown}
-        placeholder={categoryId ? "Type to search materials…" : "Select category first…"}
-        disabled={!categoryId}
-        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:bg-muted/50 disabled:cursor-not-allowed"
-        autoComplete="off"
-      />
-      {open && categoryId && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col">
-          {/* Search bar inside dropdown */}
-          <div className="flex items-center border-b px-3 shrink-0">
-            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-            <input
-              type="text"
-              value={inputVal}
-              onChange={(e) => {
-                setInputVal(e.target.value);
-                setHighlightIdx(-1);
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder="Search materials…"
-              className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-
-          {/* Options list */}
-          <div className="max-h-52 overflow-y-auto p-1">
-            {/* Select option */}
-            {value && (
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  selectMaterial("", "");
-                }}
-                onMouseEnter={() => setHighlightIdx(0)}
-                className={`w-full text-left px-3 py-2 text-sm transition ${
-                  highlightIdx === 0
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "hover:bg-secondary-soft"
-                }`}
-              >
-                <span className="text-muted-foreground">— Select —</span>
-              </button>
-            )}
-
-            {/* Material options */}
-            {filtered.map((name, i) => {
-              const mat = categoryMaterials.find((m) => m.name === name);
-              const isSelected = mat?.id === value;
-              const idx = (value ? 1 : 0) + i;
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    if (mat) selectMaterial(mat.id, mat.name);
-                  }}
-                  onMouseEnter={() => setHighlightIdx(idx)}
-                  className={`w-full text-left px-3 py-2 text-sm transition ${
-                    highlightIdx === idx
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "hover:bg-secondary-soft"
-                  } ${isSelected ? "bg-secondary-soft" : ""}`}
-                >
-                  {name}
+    <>
+      <div ref={wrapperRef} className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputVal}
+          onChange={(e) => {
+            setInputVal(e.target.value);
+            setHighlightIdx(-1);
+            if (!open) setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={categoryId ? "Type to search materials…" : "Select category first…"}
+          disabled={!categoryId}
+          className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:bg-muted/50 disabled:cursor-not-allowed"
+          autoComplete="off"
+        />
+        {open && categoryId && (
+          <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col">
+            <div className="flex items-center border-b px-3 shrink-0">
+              <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+              <input
+                type="text"
+                value={inputVal}
+                onChange={(e) => { setInputVal(e.target.value); setHighlightIdx(-1); }}
+                onKeyDown={handleKeyDown}
+                placeholder="Search materials…"
+                className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+            <div className="max-h-52 overflow-y-auto p-1">
+              {value && (
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); selectMaterial("", ""); }}
+                  onMouseEnter={() => setHighlightIdx(0)}
+                  className={`w-full text-left px-3 py-2 text-sm transition ${highlightIdx === 0 ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"}`}>
+                  <span className="text-muted-foreground">— Select —</span>
                 </button>
-              );
-            })}
-
-            {/* Others option */}
-            {trimmedInput.length > 0 && !isExactMatch && (
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  selectMaterial(trimmedInput, trimmedInput);
-                }}
-                onMouseEnter={() =>
-                  setHighlightIdx((value ? 1 : 0) + filtered.length)
-                }
-                className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${
-                  highlightIdx === (value ? 1 : 0) + filtered.length
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "hover:bg-secondary-soft"
-                }`}
-              >
-                <span className="text-muted-foreground">Use custom: </span>
-                <span className="font-semibold">{trimmedInput}</span>
-              </button>
-            )}
-
-            {/* No results */}
-            {filtered.length === 0 && trimmedInput.length > 0 && !isExactMatch && (
-              <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
-                No matching materials found
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-});
-
-// ---------- Supply Combobox (typeahead searchable) ----------
-const SupplyCombobox = memo(function SupplyCombobox({
-  value,
-  onChange,
-  onSupplierSelect,
-  supplies,
-}: {
-  value: string;
-  onChange: (val: string) => void;
-  onSupplierSelect: (supplier: { name: string; phone?: string; gstin?: string; address?: string } | null) => void;
-  supplies: {
-    id: string;
-    name: string;
-    category?: string | null;
-    unit?: string | null;
-    rate?: number | null;
-    supplier_id?: string | null;
-    suppliers?: { name: string; phone?: string | null; gstin?: string | null; address?: string | null } | null;
-  }[];
-}) {
-  const [inputVal, setInputVal] = useState(value || "");
-  const [open, setOpen] = useState(false);
-  const [highlightIdx, setHighlightIdx] = useState(-1);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-
-  // Find the selected supply name for display
-  const selectedSupply = useMemo(
-    () => supplies?.find((s) => s.id === value),
-    [supplies, value],
-  );
-
-  // Sync external value changes
-  useEffect(() => {
-    setInputVal(selectedSupply?.name || value || "");
-  }, [value, selectedSupply]);
-
-  // Build suggestion list: supply names
-  const allSuggestions = useMemo(() => {
-    const names: string[] = [];
-    for (const s of supplies ?? []) {
-      if (s.name?.trim()) names.push(s.name.trim());
-    }
-    return names;
-  }, [supplies]);
-
-  const filtered = useMemo(() => {
-    const q = inputVal.trim().toLowerCase();
-    if (!q) return allSuggestions;
-    return allSuggestions.filter((n) => n.toLowerCase().includes(q));
-  }, [inputVal, allSuggestions]);
-
-  const trimmedInput = inputVal.trim();
-  const isExactMatch =
-    trimmedInput.length > 0 &&
-    allSuggestions.some((n) => n.toLowerCase() === trimmedInput.toLowerCase());
-
-  function selectSupply(supplyId: string, supplyName: string) {
-    setInputVal(supplyName);
-    onChange(supplyId);
-    // Auto-fill supplier details from the selected supply
-    const supply = supplies?.find((s) => s.id === supplyId);
-    if (supply?.suppliers) {
-      onSupplierSelect({
-        name: supply.suppliers.name ?? "",
-        phone: supply.suppliers.phone ?? undefined,
-        gstin: supply.suppliers.gstin ?? undefined,
-        address: supply.suppliers.address ?? undefined,
-      });
-    } else {
-      onSupplierSelect(null);
-    }
-    setOpen(false);
-    setHighlightIdx(-1);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (!open) {
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        setOpen(true);
-      }
-      return;
-    }
-    // Layout: [Select (if value)] + filtered supplies + [Others (if custom input)]
-    const hasSelectOption = value ? 1 : 0;
-    const hasOthersOption = trimmedInput.length > 0 && !isExactMatch ? 1 : 0;
-    const totalItems = hasSelectOption + filtered.length + hasOthersOption;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightIdx((i) => (i + 1) % totalItems);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightIdx((i) => (i - 1 + totalItems) % totalItems);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (hasSelectOption && highlightIdx === 0) {
-        selectSupply("", "");
-      } else if (
-        highlightIdx >= hasSelectOption &&
-        highlightIdx < hasSelectOption + filtered.length
-      ) {
-        const idx = highlightIdx - hasSelectOption;
-        const supply = supplies?.find((s) => s.name === filtered[idx]);
-        if (supply) selectSupply(supply.id, supply.name);
-      } else if (
-        hasOthersOption &&
-        highlightIdx === hasSelectOption + filtered.length
-      ) {
-        onChange(trimmedInput);
-        onSupplierSelect(null);
-        setOpen(false);
-        setHighlightIdx(-1);
-      } else if (filtered.length === 1) {
-        const supply = supplies?.find((s) => s.name === filtered[0]);
-        if (supply) selectSupply(supply.id, supply.name);
-      } else if (hasOthersOption) {
-        onChange(trimmedInput);
-        onSupplierSelect(null);
-        setOpen(false);
-        setHighlightIdx(-1);
-      }
-    } else if (e.key === "Escape") {
-      setOpen(false);
-      setHighlightIdx(-1);
-    }
-  }
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  return (
-    <div ref={wrapperRef} className="relative">
-      <input
-        ref={inputRef}
-        type="text"
-        value={inputVal}
-        onChange={(e) => {
-          setInputVal(e.target.value);
-          setHighlightIdx(-1);
-          if (!open) setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={handleKeyDown}
-        placeholder="Type to search supplies…"
-        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-        autoComplete="off"
-      />
-      {open && (
-        <div
-          ref={listRef}
-          className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col"
-        >
-          {/* Search bar INSIDE the dropdown */}
-          <div className="flex items-center border-b px-3 shrink-0">
-            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-            <input
-              type="text"
-              value={inputVal}
-              onChange={(e) => {
-                setInputVal(e.target.value);
-                setHighlightIdx(-1);
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder="Search supplies…"
-              className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-
-          {/* Options list */}
-          <div className="max-h-52 overflow-y-auto p-1">
-            {/* "Select" option — only shown when a value is selected */}
-            {value && (
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  selectSupply("", "");
-                }}
-                onMouseEnter={() => setHighlightIdx(0)}
-                className={`w-full text-left px-3 py-2 text-sm transition ${
-                  highlightIdx === 0
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "hover:bg-secondary-soft"
-                }`}
-              >
-                <span className="text-muted-foreground">— Select —</span>
-              </button>
-            )}
-
-            {/* Supply options */}
-            {filtered.map((name, i) => {
-              const supply = supplies?.find((s) => s.name === name);
-              const isSelected = supply?.id === value;
-              const idx = (value ? 1 : 0) + i;
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    if (supply) selectSupply(supply.id, supply.name);
-                  }}
-                  onMouseEnter={() => setHighlightIdx(idx)}
-                  className={`w-full text-left px-3 py-2 text-sm transition ${
-                    highlightIdx === idx
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "hover:bg-secondary-soft"
-                  } ${isSelected ? "bg-secondary-soft" : ""}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span>{name}</span>
-                    {supply?.suppliers?.name && (
-                      <span className="text-[10px] text-muted-foreground ml-2">
-                        {supply.suppliers.name}
-                      </span>
-                    )}
-                  </div>
-                  {supply?.category && (
-                    <div className="text-[10px] text-muted-foreground/70 mt-0.5">
-                      {supply.category}{supply.unit ? ` · ${supply.unit}` : ""}{supply.rate ? ` · ₹${supply.rate}` : ""}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-
-            {/* "Others" option — shown when typed text doesn't match any supply */}
-            {trimmedInput.length > 0 && !isExactMatch && (
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  onChange(trimmedInput);
-                  onSupplierSelect(null);
-                  setOpen(false);
-                  setHighlightIdx(-1);
-                }}
-                onMouseEnter={() =>
-                  setHighlightIdx((value ? 1 : 0) + filtered.length)
-                }
-                className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${
-                  highlightIdx === (value ? 1 : 0) + filtered.length
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "hover:bg-secondary-soft"
-                }`}
-              >
-                <span className="text-muted-foreground">Use custom: </span>
-                <span className="font-semibold">{trimmedInput}</span>
-              </button>
-            )}
-
-            {/* No results message */}
-            {filtered.length === 0 &&
-              trimmedInput.length > 0 &&
-              !isExactMatch && (
-                <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">
-                  No matching supplies found
-                </div>
               )}
+              {filtered.map((name, i) => {
+                const mat = categoryMaterials.find((m) => m.name === name);
+                const isSelected = mat?.id === value;
+                const idx = (value ? 1 : 0) + i;
+                return (
+                  <button key={name} type="button"
+                    onMouseDown={(e) => { e.preventDefault(); if (mat) selectMaterial(mat.id, mat.name); }}
+                    onMouseEnter={() => setHighlightIdx(idx)}
+                    className={`w-full text-left px-3 py-2 text-sm transition ${highlightIdx === idx ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"} ${isSelected ? "bg-secondary-soft" : ""}`}>
+                    {name}
+                  </button>
+                );
+              })}
+              {trimmedInput.length > 0 && !isExactMatch && (
+                <button type="button"
+                  onMouseDown={(e) => { e.preventDefault(); setNewMatName(trimmedInput); setShowAddModal(true); setOpen(false); }}
+                  onMouseEnter={() => setHighlightIdx((value ? 1 : 0) + filtered.length)}
+                  className={`w-full text-left px-3 py-2 text-sm border-t border-border/50 transition ${highlightIdx === (value ? 1 : 0) + filtered.length ? "bg-emerald-50 text-emerald-700 font-medium" : "hover:bg-emerald-50"}`}>
+                  <span className="text-emerald-600">+ Add new: </span>
+                  <span className="font-semibold">{trimmedInput}</span>
+                </button>
+              )}
+              {filtered.length === 0 && trimmedInput.length > 0 && !isExactMatch && (
+                <div className="px-3 py-2 text-xs text-muted-foreground/70 italic">No matching materials found</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      {/* Inline Add Material Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onMouseDown={() => { setShowAddModal(false); setNewMatName(""); }}>
+          <div className="bg-white rounded-xl shadow-2xl border border-border w-full max-w-sm p-4 space-y-3" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-foreground">Add New Material</h3>
+              <button onClick={() => { setShowAddModal(false); setNewMatName(""); }} className="rounded p-1 hover:bg-muted">
+                <X className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+            {!categoryId && <p className="text-xs text-amber-600">Please select a category first.</p>}
+            <input
+              value={newMatName}
+              onChange={(e) => setNewMatName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addNewMaterial(); }}
+              placeholder="Material name *"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              disabled={!categoryId}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setShowAddModal(false); setNewMatName(""); }} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition">Cancel</button>
+              <button onClick={addNewMaterial} disabled={savingNew || !newMatName.trim() || !categoryId} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition">
+                {savingNew ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                {savingNew ? "Adding…" : "Add Material"}
+              </button>
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 });
 
@@ -1460,6 +1342,80 @@ function Purchases() {
   const [drafts, setDrafts] = useState<DraftEntry[]>([]);
   const [showDrafts, setShowDrafts] = useState(false);
   const [slotTotals, setSlotTotals] = useState<Record<string, number>>({});
+
+  // Add New Slot modal state
+  const [showAddSlotModal, setShowAddSlotModal] = useState(false);
+  const [addSlotIdx, setAddSlotIdx] = useState<number | null>(null);
+  const [newSlotName, setNewSlotName] = useState("");
+  const [newSlotTotalAmount, setNewSlotTotalAmount] = useState(0);
+  const [newSlotTotalUnits, setNewSlotTotalUnits] = useState(0);
+  const [newSlotNotes, setNewSlotNotes] = useState("");
+  const [savingNewSlot, setSavingNewSlot] = useState(false);
+
+  // Listen for custom event to open add-slot modal
+  useEffect(() => {
+    function handleOpenAddSlot(e: Event) {
+      const detail = (e as CustomEvent).detail;
+      setAddSlotIdx(detail?.idx ?? null);
+      setNewSlotName("");
+      setNewSlotTotalAmount(0);
+      setNewSlotTotalUnits(0);
+      setNewSlotNotes("");
+      setShowAddSlotModal(true);
+    }
+    window.addEventListener("open-add-slot", handleOpenAddSlot);
+    return () => window.removeEventListener("open-add-slot", handleOpenAddSlot);
+  }, []);
+
+  // Function to save a new slot from inline modal
+  async function saveNewSlotInline() {
+    if (!newSlotName.trim()) return toast.error("Slot name is required");
+    if (newSlotTotalUnits <= 0) return toast.error("Total slot units must be greater than 0");
+    // Check duplicate
+    const dup = (slotsList ?? []).find((s) => s.name?.toLowerCase() === newSlotName.trim().toLowerCase());
+    if (dup) return toast.error("A slot with this name already exists");
+    setSavingNewSlot(true);
+    try {
+      const totalAmount = Number(newSlotTotalAmount) || 0;
+      const totalUnits = Number(newSlotTotalUnits) || 0;
+      const payload = {
+        name: newSlotName.trim(),
+        total_charges: totalAmount,
+        packing_charges: totalAmount,
+        freight_charges: 0,
+        other_charges: 0,
+        total_quantity: totalUnits,
+        notes: newSlotNotes.trim() || null,
+        is_active: true,
+      };
+      const { data: newSlot, error } = await supabase.from("slots").insert(payload).select("id,name,packing_charges,freight_charges,other_charges,total_quantity,total_charges").single();
+      if (error) throw error;
+      toast.success("Slot created");
+      qc.invalidateQueries({ queryKey: ["slots"] });
+      qc.invalidateQueries({ queryKey: ["slots-lite"] });
+      // Auto-select the new slot in the row
+      if (newSlot && addSlotIdx !== null) {
+        const slotPerUnit = totalUnits > 0 ? totalAmount / totalUnits : 0;
+        const productQty = Number(rows[addSlotIdx]?.quantity) || 0;
+        const totalPF = Math.round(slotPerUnit * productQty * 100) / 100;
+        patchRow(addSlotIdx, {
+          slot_id: newSlot.id,
+          slot_total_charge: totalAmount,
+          slot_charge_per_product: totalPF,
+          purchase_packing_freight_charge: Math.round(slotPerUnit * 100) / 100,
+        });
+      }
+      setShowAddSlotModal(false);
+      setNewSlotName("");
+      setNewSlotTotalAmount(0);
+      setNewSlotTotalUnits(0);
+      setNewSlotNotes("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create slot");
+    } finally {
+      setSavingNewSlot(false);
+    }
+  }
 
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -1533,19 +1489,6 @@ function Purchases() {
           .from("products")
           .select("id,barcode,name,category_id,stock,reorder_level,unit,price,purchase_price,image_urls,sku,color_variations")
           .order("created_at", { ascending: false })
-      ).data ?? [],
-  });
-
-  // Supplies for supply name autocomplete
-  const { data: suppliesList } = useQuery({
-    queryKey: ["supplies-lite"],
-    queryFn: async () =>
-      (
-        await supabase
-          .from("supplies")
-          .select("id,name,category,unit,rate,supplier_id,suppliers(id,name,phone,gstin,address)")
-          .eq("is_active", true)
-          .order("name")
       ).data ?? [],
   });
 
@@ -2058,7 +2001,6 @@ function Purchases() {
   const FORM_FIELDS: { key: string; label: string; type: string; ro?: boolean; unitField?: string }[] = [
     { key: "slot_id", label: "Slot", type: "select-slot-auto" },
     { key: "barcode", label: "Barcode", type: "text" },
-    { key: "supply_id", label: "Supply Name", type: "select-supply" },
     { key: "supplier_name", label: "Supplier Name", type: "select-supplier" },
     { key: "supplier_bill_no", label: "Supplier Bill Number", type: "text" },
     { key: "category_id", label: "Craft Material Category", type: "select-category" },
@@ -2110,19 +2052,6 @@ function Purchases() {
   ) {
     const field = fieldDef.key as keyof ProductRow;
     switch (fieldDef.type) {
-      case "select-supply":
-        return (
-          <SupplyCombobox
-            value={String(row.supply_id || "")}
-            onChange={(val) => patchRow(idx, { supply_id: val })}
-            onSupplierSelect={(supplier) => {
-              if (supplier) {
-                patchRow(idx, { supplier_name: supplier.name });
-              }
-            }}
-            supplies={suppliesList ?? []}
-          />
-        );
       case "select-product-name":
         return (
           <ProductNameCombobox
@@ -2138,6 +2067,10 @@ function Purchases() {
             value={String(row[field] || "")}
             onChange={(val) => patchRow(idx, { supplier_name: val })}
             suppliers={suppliers ?? []}
+            onSupplierAdded={() => {
+              qc.invalidateQueries({ queryKey: ["suppliers-lite"] });
+              qc.invalidateQueries({ queryKey: ["sup"] });
+            }}
           />
         );
       case "select-discount-type":
@@ -2200,6 +2133,10 @@ function Purchases() {
             value={String(row[field] || "")}
             onChange={(val) => patchRow(idx, { category_id: val, material: "" })}
             categories={categories ?? []}
+            onCategoryAdded={() => {
+              qc.invalidateQueries({ queryKey: ["cats-lite"] });
+              qc.invalidateQueries({ queryKey: ["admin-cats"] });
+            }}
           />
         );
       case "select-material":
@@ -2209,6 +2146,10 @@ function Purchases() {
             onChange={(val) => patchRow(idx, { material: val })}
             categoryId={String(row.category_id || "")}
             materials={allMaterials ?? []}
+            onMaterialAdded={() => {
+              qc.invalidateQueries({ queryKey: ["materials-lite"] });
+              qc.invalidateQueries({ queryKey: ["admin-materials"] });
+            }}
           />
         );
       case "select-slot-auto": {
@@ -2224,36 +2165,44 @@ function Purchases() {
 
         return (
           <div className="space-y-1">
-            <select
-              value={currentSlotId}
-              onChange={(e) => {
-                const val = e.target.value;
-                const slot = (slotsList ?? []).find((s) => s.id === val);
-                const slotPerUnit = slot
-                  ? (((slot.packing_charges ?? 0) + (slot.freight_charges ?? 0) + (slot.other_charges ?? 0)) /
-                     (slot.total_quantity ?? 1))
-                  : 0;
-                const productQty = Number(row.quantity) || 0;
-                const totalPF = Math.round(slotPerUnit * productQty * 100) / 100;
-                patchRow(idx, {
-                  slot_id: val,
-                  slot_total_charge: slot?.total_charges ?? 0,
-                  slot_charge_per_product: totalPF,
-                  purchase_packing_freight_charge: Math.round(slotPerUnit * 100) / 100,
-                });
-              }}
-              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-            >
-              <option value="">— no slot —</option>
-              {(slotsList ?? []).map((s) => {
-                const sPerUnit = ((s.packing_charges ?? 0) + (s.freight_charges ?? 0) + (s.other_charges ?? 0)) / (s.total_quantity ?? 1);
-                return (
-                  <option key={s.id} value={s.id}>
-                    {s.name} (₹{sPerUnit.toFixed(2)}/unit)
-                  </option>
-                );
-              })}
-            </select>
+            <div className="flex gap-1.5">
+              <select
+                value={currentSlotId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "__add_new__") {
+                    // Trigger add new slot modal via custom event
+                    window.dispatchEvent(new CustomEvent("open-add-slot", { detail: { idx } }));
+                    return;
+                  }
+                  const slot = (slotsList ?? []).find((s) => s.id === val);
+                  const slotPerUnit = slot
+                    ? (((slot.packing_charges ?? 0) + (slot.freight_charges ?? 0) + (slot.other_charges ?? 0)) /
+                       (slot.total_quantity ?? 1))
+                    : 0;
+                  const productQty = Number(row.quantity) || 0;
+                  const totalPF = Math.round(slotPerUnit * productQty * 100) / 100;
+                  patchRow(idx, {
+                    slot_id: val,
+                    slot_total_charge: slot?.total_charges ?? 0,
+                    slot_charge_per_product: totalPF,
+                    purchase_packing_freight_charge: Math.round(slotPerUnit * 100) / 100,
+                  });
+                }}
+                className="flex-1 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              >
+                <option value="">— no slot —</option>
+                {(slotsList ?? []).map((s) => {
+                  const sPerUnit = ((s.packing_charges ?? 0) + (s.freight_charges ?? 0) + (s.other_charges ?? 0)) / (s.total_quantity ?? 1);
+                  return (
+                    <option key={s.id} value={s.id}>
+                      {s.name} (₹{sPerUnit.toFixed(2)}/unit)
+                    </option>
+                  );
+                })}
+                <option value="__add_new__">+ Add New Slot</option>
+              </select>
+            </div>
             {selectedSlot && (
               <div className="mt-1 p-2 rounded-lg bg-primary/5 border border-primary/20 space-y-1">
                 <div className="flex items-center justify-between text-[11px]">
@@ -3198,6 +3147,81 @@ function Purchases() {
             </div>
           )}
         </>
+      )}
+
+      {/* ====== ADD NEW SLOT MODAL ====== */}
+      {showAddSlotModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onMouseDown={() => { setShowAddSlotModal(false); setNewSlotName(""); setNewSlotTotalAmount(0); setNewSlotTotalUnits(0); setNewSlotNotes(""); }}>
+          <div className="bg-white rounded-xl shadow-2xl border border-border w-full max-w-md p-4 space-y-3" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-foreground">Add New Slot</h3>
+              <button onClick={() => { setShowAddSlotModal(false); setNewSlotName(""); setNewSlotTotalAmount(0); setNewSlotTotalUnits(0); setNewSlotNotes(""); }} className="rounded p-1 hover:bg-muted">
+                <X className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Slot Name *</label>
+                <input
+                  value={newSlotName}
+                  onChange={(e) => setNewSlotName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveNewSlotInline(); }}
+                  placeholder="e.g. 1, 2, A"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  autoFocus
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Amount (₹)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={newSlotTotalAmount || ""}
+                    onChange={(e) => setNewSlotTotalAmount(Number(e.target.value) || 0)}
+                    placeholder="0"
+                    className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Units *</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newSlotTotalUnits || ""}
+                    onChange={(e) => setNewSlotTotalUnits(Number(e.target.value) || 0)}
+                    placeholder="0"
+                    className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
+                  />
+                </div>
+              </div>
+              {newSlotTotalUnits > 0 && (
+                <div className="p-2 rounded-lg bg-primary/5 border border-primary/20">
+                  <span className="text-[10px] text-muted-foreground uppercase">Per Unit Cost: </span>
+                  <span className="text-xs font-bold text-primary">₹{((Number(newSlotTotalAmount) || 0) / newSlotTotalUnits).toFixed(2)}/unit</span>
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Notes</label>
+                <input
+                  value={newSlotNotes}
+                  onChange={(e) => setNewSlotNotes(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveNewSlotInline(); }}
+                  placeholder="Optional notes"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <button onClick={() => { setShowAddSlotModal(false); setNewSlotName(""); setNewSlotTotalAmount(0); setNewSlotTotalUnits(0); setNewSlotNotes(""); }} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition">Cancel</button>
+              <button onClick={saveNewSlotInline} disabled={savingNewSlot || !newSlotName.trim() || newSlotTotalUnits <= 0} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition">
+                {savingNewSlot ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                {savingNewSlot ? "Adding…" : "Add Slot"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
