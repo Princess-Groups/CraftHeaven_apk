@@ -38,6 +38,7 @@ type Product = {
   igst_rate: number | null;
   category_id: string | null;
   color: string | null;
+  material: string | null;
   color_variations: ColorVariation[];
 };
 
@@ -111,7 +112,7 @@ function Billing() {
       let query = supabase
         .from("products")
         .select(
-          "id,name,price,discount_price,stock,unit,barcode,sku,gst_rate,image_urls,cgst_rate,sgst_rate,igst_rate,category_id,color,color_variations",
+          "id,name,price,discount_price,stock,unit,barcode,sku,gst_rate,image_urls,cgst_rate,sgst_rate,igst_rate,category_id,color,material,color_variations",
         )
         .limit(10);
       if (searchType === "barcode") {

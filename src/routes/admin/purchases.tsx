@@ -1082,7 +1082,7 @@ const CategoryCombobox = memo(function CategoryCombobox({
   );
 });
 
-// ---------- Material Combobox (filtered by category, with + Add) ----------
+// ---------- Material Combobox (searches ALL materials, with + Add) ----------
 const MaterialCombobox = memo(function MaterialCombobox({
   value,
   onChange,
@@ -1106,11 +1106,14 @@ const MaterialCombobox = memo(function MaterialCombobox({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
-  // Filter materials by selected category
-  const categoryMaterials = useMemo(() => {
-    if (!categoryId) return [];
-    return materials.filter((m) => m.category_id === categoryId);
-  }, [materials, categoryId]);
+  // Category lookup for labels
+  const catMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    materials.forEach((mat) => {
+      if (mat.category_id) m[mat.category_id] = mat.category_id;
+    });
+    return m;
+  }, [materials]);
 
   // Compute display name from value
   const displayName = useMemo(() => {
@@ -1126,25 +1129,25 @@ const MaterialCombobox = memo(function MaterialCombobox({
     }
   }, [displayName, open]);
 
-  // Build suggestion list from category materials
-  const allSuggestions = useMemo(() => {
-    const names: string[] = [];
-    for (const m of categoryMaterials) {
-      if (m.name?.trim()) names.push(m.name.trim());
-    }
-    return names;
-  }, [categoryMaterials]);
-
-  const filtered = useMemo(() => {
-    const q = inputVal.trim().toLowerCase();
-    if (!q) return allSuggestions;
-    return allSuggestions.filter((n) => n.toLowerCase().includes(q));
-  }, [inputVal, allSuggestions]);
-
   const trimmedInput = inputVal.trim();
+  const isSearching = trimmedInput.length > 0;
+
+  // When searching: show ALL materials matching the query across all categories
+  // When not searching: show only category-filtered materials
+  const filtered = useMemo(() => {
+    const q = trimmedInput.toLowerCase();
+    if (isSearching) {
+      // Search across ALL materials
+      return materials.filter((m) => m.name?.toLowerCase().includes(q));
+    }
+    // No search — show category-filtered materials
+    if (!categoryId) return [];
+    return materials.filter((m) => m.category_id === categoryId);
+  }, [trimmedInput, isSearching, materials, categoryId]);
+
   const isExactMatch =
     trimmedInput.length > 0 &&
-    allSuggestions.some((n) => n.toLowerCase() === trimmedInput.toLowerCase());
+    filtered.some((m) => m.name.toLowerCase() === trimmedInput.toLowerCase());
 
   function selectMaterial(materialId: string, materialName: string) {
     onChange(materialId);
@@ -1215,14 +1218,14 @@ const MaterialCombobox = memo(function MaterialCombobox({
         selectMaterial("", "");
       } else if (highlightIdx >= hasSelectOption && highlightIdx < hasSelectOption + filtered.length) {
         const matIdx = highlightIdx - hasSelectOption;
-        const mat = categoryMaterials.find((m) => m.name === filtered[matIdx]);
+        const mat = filtered[matIdx];
         if (mat) selectMaterial(mat.id, mat.name);
       } else if (hasAddNew && highlightIdx === hasSelectOption + filtered.length) {
         setNewMatName(trimmedInput);
         setShowAddModal(true);
         setOpen(false);
       } else if (filtered.length === 1) {
-        const mat = categoryMaterials.find((m) => m.name === filtered[0]);
+        const mat = filtered[0];
         if (mat) selectMaterial(mat.id, mat.name);
       } else if (hasAddNew) {
         setNewMatName(trimmedInput);
@@ -1261,7 +1264,7 @@ const MaterialCombobox = memo(function MaterialCombobox({
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder={categoryId ? "Type to search materials…" : "Select category first…"}
+          placeholder={categoryId ? "Type to search all materials…" : "Select category first…"}
           disabled={!categoryId}
           className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:bg-muted/50 disabled:cursor-not-allowed"
           autoComplete="off"
@@ -1275,7 +1278,7 @@ const MaterialCombobox = memo(function MaterialCombobox({
                 value={inputVal}
                 onChange={(e) => { setInputVal(e.target.value); setHighlightIdx(-1); }}
                 onKeyDown={handleKeyDown}
-                placeholder="Search materials…"
+                placeholder="Search all materials…"
                 className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
               />
             </div>
@@ -1287,16 +1290,19 @@ const MaterialCombobox = memo(function MaterialCombobox({
                   <span className="text-muted-foreground">— Select —</span>
                 </button>
               )}
-              {filtered.map((name, i) => {
-                const mat = categoryMaterials.find((m) => m.name === name);
-                const isSelected = mat?.id === value;
+              {filtered.map((mat, i) => {
+                const isSelected = mat.id === value;
                 const idx = (value ? 1 : 0) + i;
+                const isOtherCategory = isSearching && mat.category_id !== categoryId;
                 return (
-                  <button key={name} type="button"
-                    onMouseDown={(e) => { e.preventDefault(); if (mat) selectMaterial(mat.id, mat.name); }}
+                  <button key={mat.id} type="button"
+                    onMouseDown={(e) => { e.preventDefault(); selectMaterial(mat.id, mat.name); }}
                     onMouseEnter={() => setHighlightIdx(idx)}
                     className={`w-full text-left px-3 py-2 text-sm transition ${highlightIdx === idx ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary-soft"} ${isSelected ? "bg-secondary-soft" : ""}`}>
-                    {name}
+                    <span>{mat.name}</span>
+                    {isOtherCategory && (
+                      <span className="ml-1.5 text-[10px] text-muted-foreground/60 font-normal">(different category)</span>
+                    )}
                   </button>
                 );
               })}
@@ -1911,6 +1917,7 @@ function Purchases() {
         unit: row.per_packet_unit || "Nos",
         image_urls: row.image_url ? [row.image_url] : [],
         color: row.colour || null,
+        material: row.material || null,
         is_available: (Number(row.current_stock) || 0) > 0,
         color_variations: (row.color_variants || []).map((v) => ({
           color: v.color_name || v.color_code || "",
@@ -1996,6 +2003,7 @@ function Purchases() {
         brand_id: null,
         color: r.colour || null,
         size: null,
+        material: r.material || null,
         unit_cost: Number(r.unit_price) || 0,
         selling_price: Number(r.retail_selling_price) || 0,
         quantity: Math.round(Number(r.quantity) || 1),

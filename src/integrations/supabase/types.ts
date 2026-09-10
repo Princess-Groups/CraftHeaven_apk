@@ -409,6 +409,7 @@ export type Database = {
           is_new: boolean
           is_trending: boolean
           low_stock_threshold: number
+          material: string | null
           name: string
           price: number
           purchase_price: number | null
@@ -440,6 +441,7 @@ export type Database = {
           is_new?: boolean
           is_trending?: boolean
           low_stock_threshold?: number
+          material?: string | null
           name: string
           price: number
           purchase_price?: number | null
@@ -471,6 +473,7 @@ export type Database = {
           is_new?: boolean
           is_trending?: boolean
           low_stock_threshold?: number
+          material?: string | null
           name?: string
           price?: number
           purchase_price?: number | null

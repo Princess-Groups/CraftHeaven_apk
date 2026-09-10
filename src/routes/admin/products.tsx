@@ -45,6 +45,7 @@ type Product = {
   reorder_level: number;
   image_urls: string[];
   color: string | null;
+  material: string | null;
   size: string | null;
   color_variations: ColorVariation[];
 };
@@ -175,6 +176,7 @@ function Products() {
       is_available: editing.is_available ?? true,
       image_urls: editing.image_urls ?? [],
       color: editing.color || null,
+      material: editing.material || null,
       size: editing.size || null,
       unit: editing.unit || "Nos",
       color_variations: mapVariations(editing.color_variations),
@@ -486,6 +488,14 @@ function Products() {
                   onChange={(e) => setEditing({ ...editing, color: e.target.value })}
                   className={inputCls}
                   placeholder="e.g. Pink"
+                />
+              </Field>
+              <Field label="Material">
+                <input
+                  value={editing.material ?? ""}
+                  onChange={(e) => setEditing({ ...editing, material: e.target.value })}
+                  className={inputCls}
+                  placeholder="e.g. Cotton, Silk"
                 />
               </Field>
               <Field label="Size / Variant">
