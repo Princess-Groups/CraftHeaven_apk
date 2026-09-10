@@ -123,7 +123,18 @@ function Slots() {
         }
         toast.success("Slot updated");
       } else {
-        const { data, error } = await supabase.from("slots").insert(payload).select();
+        let { data, error } = await supabase.from("slots").insert(payload).select();
+        let restored = false;
+        // If a slot with this name already exists (even inactive), upsert instead
+        if (error?.code === "23505") {
+          const result = await supabase
+            .from("slots")
+            .upsert({ ...payload, is_active: true }, { onConflict: "name" })
+            .select();
+          data = result.data;
+          error = result.error;
+          restored = !error;
+        }
         if (error) {
           console.error("[Slots] Insert error:", error);
           throw error;
@@ -132,7 +143,7 @@ function Slots() {
           console.error("[Slots] Insert returned no data — possible RLS issue");
           throw new Error("Insert failed — no data returned. Check your permissions.");
         }
-        toast.success("Slot created");
+        toast.success(restored ? "Slot restored (name was reused)" : "Slot created");
       }
       resetForm();
       qc.invalidateQueries({ queryKey: ["slots"] });
