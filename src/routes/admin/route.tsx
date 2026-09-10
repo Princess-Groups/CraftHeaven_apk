@@ -50,14 +50,14 @@ export const Route = createFileRoute("/admin")({
     if (location.pathname === "/admin/login") return {};
     const { data: userRes } = await supabase.auth.getUser();
     if (!userRes.user) throw redirect({ to: "/admin/login" });
-    const { data: roles } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userRes.user.id);
-    const allowed = roles?.some((r) => r.role === "admin" || r.role === "staff");
-    if (!allowed) throw redirect({ to: "/admin/login" });
-    const isAdmin = roles?.some((r) => r.role === "admin") ?? false;
-    const isStaff = roles?.some((r) => r.role === "staff") ?? false;
+    // Use check_user_role() RPC (SECURITY DEFINER, text-based) to bypass RLS
+    const [adminRes, staffRes] = await Promise.all([
+      supabase.rpc("check_user_role", { _role: "admin" }),
+      supabase.rpc("check_user_role", { _role: "staff" }),
+    ]);
+    const isAdmin = adminRes.data ?? false;
+    const isStaff = staffRes.data ?? false;
+    if (!isAdmin && !isStaff) throw redirect({ to: "/admin/login" });
     // Staff can only access billing
     if (isStaff && !isAdmin && location.pathname !== "/admin/billing" && location.pathname !== "/admin/login") {
       throw redirect({ to: "/admin/billing" });

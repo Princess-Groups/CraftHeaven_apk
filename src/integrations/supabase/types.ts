@@ -1946,12 +1946,12 @@ export type Database = {
       }
       create_purchase_with_products: {
         Args: {
-          _invoice_no?: string
           _items: Json
-          _notes?: string
+          _invoice_no?: string | null
+          _notes?: string | null
           _purchase_packing_freight_charge?: number
           _purchase_date?: string
-          _supplier_id: string
+          _supplier_id?: string | null
         }
         Returns: string
       }

@@ -95,18 +95,33 @@ function Materials() {
       };
 
       if (editingId) {
-        const { error } = await supabase.from("materials").update(payload).eq("id", editingId);
-        if (error) throw error;
+        const { data, error } = await supabase.from("materials").update(payload).eq("id", editingId).select();
+        if (error) {
+          console.error("[Materials] Update error:", error);
+          throw error;
+        }
+        if (!data || data.length === 0) {
+          console.error("[Materials] Update returned no rows — possible RLS issue");
+          throw new Error("Update failed — no rows affected. Check your permissions.");
+        }
         toast.success("Material updated");
       } else {
-        const { error } = await supabase.from("materials").insert(payload);
-        if (error) throw error;
+        const { data, error } = await supabase.from("materials").insert(payload).select();
+        if (error) {
+          console.error("[Materials] Insert error:", error);
+          throw error;
+        }
+        if (!data || data.length === 0) {
+          console.error("[Materials] Insert returned no data — possible RLS issue");
+          throw new Error("Insert failed — no data returned. Check your permissions.");
+        }
         toast.success("Material added");
       }
       resetForm();
       qc.invalidateQueries({ queryKey: ["materials"] });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save");
+      console.error("[Materials] Save failed:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to save material");
     } finally {
       setSaving(false);
     }

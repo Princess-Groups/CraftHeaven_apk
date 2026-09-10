@@ -82,12 +82,16 @@ function Categories() {
 
       // If material name provided, create material under this category
       if (materialName.trim() && newCat) {
-        const { error: matErr } = await supabase
+        const { data: matData, error: matErr } = await supabase
           .from("materials")
-          .insert({ name: materialName.trim(), category_id: newCat.id, is_active: true });
+          .insert({ name: materialName.trim(), category_id: newCat.id, is_active: true })
+          .select();
         if (matErr) {
-          console.error("Failed to add material:", matErr);
+          console.error("[Categories] Material insert error:", matErr);
           toast.error("Category added but material failed: " + matErr.message);
+        } else if (!matData || matData.length === 0) {
+          console.error("[Categories] Material insert returned no data — possible RLS issue");
+          toast.error("Category added but material insert returned no data. Check permissions.");
         } else {
           toast.success("Category and material added");
           qc.invalidateQueries({ queryKey: ["admin-materials"] });
@@ -110,13 +114,26 @@ function Categories() {
   async function addMaterial(categoryId: string, catName: string) {
     const matName = prompt(`Add a material under "${catName}":`);
     if (!matName?.trim()) return;
-    const { error } = await supabase
-      .from("materials")
-      .insert({ name: matName.trim(), category_id: categoryId, is_active: true });
-    if (error) return toast.error(error.message);
-    toast.success("Material added");
-    qc.invalidateQueries({ queryKey: ["admin-materials"] });
-    qc.invalidateQueries({ queryKey: ["materials-lite"] });
+    try {
+      const { data, error } = await supabase
+        .from("materials")
+        .insert({ name: matName.trim(), category_id: categoryId, is_active: true })
+        .select();
+      if (error) {
+        console.error("[Categories] Material insert error:", error);
+        throw error;
+      }
+      if (!data || data.length === 0) {
+        console.error("[Categories] Material insert returned no data — possible RLS issue");
+        throw new Error("Material insert failed — no data returned. Check your permissions.");
+      }
+      toast.success("Material added");
+      qc.invalidateQueries({ queryKey: ["admin-materials"] });
+      qc.invalidateQueries({ queryKey: ["materials-lite"] });
+    } catch (err) {
+      console.error("[Categories] Add material failed:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to add material");
+    }
   }
 
   // Edit category

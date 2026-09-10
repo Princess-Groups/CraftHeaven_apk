@@ -30,6 +30,7 @@ import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminGstMasterRouteImport } from './routes/admin/gst-master'
 import { Route as AdminInventoryRouteImport } from './routes/admin/inventory'
 import { Route as AdminLoginRouteImport } from './routes/admin/login'
+import { Route as AdminMaterialsRouteImport } from './routes/admin/materials'
 import { Route as AdminMcRouteImport } from './routes/admin/mc'
 import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
 import { Route as AdminPosRouteImport } from './routes/admin/pos'
@@ -38,7 +39,9 @@ import { Route as AdminProfitRouteImport } from './routes/admin/profit'
 import { Route as AdminPurchasesRouteImport } from './routes/admin/purchases'
 import { Route as AdminReportsRouteImport } from './routes/admin/reports'
 import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
+import { Route as AdminSlotsRouteImport } from './routes/admin/slots'
 import { Route as AdminSuppliersRouteImport } from './routes/admin/suppliers'
+import { Route as AdminSuppliesRouteImport } from './routes/admin/supplies'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as CategorySlugRouteImport } from './routes/category.$slug'
 import { Route as ProductSlugRouteImport } from './routes/product.$slug'
@@ -160,6 +163,11 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminMaterialsRoute = AdminMaterialsRouteImport.update({
+  id: '/materials',
+  path: '/materials',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminMcRoute = AdminMcRouteImport.update({
   id: '/mc',
   path: '/mc',
@@ -200,9 +208,19 @@ const AdminSettingsRoute = AdminSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminSlotsRoute = AdminSlotsRouteImport.update({
+  id: '/slots',
+  path: '/slots',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminSuppliersRoute = AdminSuppliersRouteImport.update({
   id: '/suppliers',
   path: '/suppliers',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminSuppliesRoute = AdminSuppliesRouteImport.update({
+  id: '/supplies',
+  path: '/supplies',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -306,6 +324,7 @@ export interface FileRoutesByFullPath {
   '/admin/gst-master': typeof AdminGstMasterRoute
   '/admin/inventory': typeof AdminInventoryRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/materials': typeof AdminMaterialsRoute
   '/admin/mc': typeof AdminMcRouteWithChildren
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/pos': typeof AdminPosRoute
@@ -314,7 +333,9 @@ export interface FileRoutesByFullPath {
   '/admin/purchases': typeof AdminPurchasesRoute
   '/admin/reports': typeof AdminReportsRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/slots': typeof AdminSlotsRoute
   '/admin/suppliers': typeof AdminSuppliersRoute
+  '/admin/supplies': typeof AdminSuppliesRoute
   '/admin/users': typeof AdminUsersRoute
   '/category/$slug': typeof CategorySlugRoute
   '/product/$slug': typeof ProductSlugRoute
@@ -352,6 +373,7 @@ export interface FileRoutesByTo {
   '/admin/gst-master': typeof AdminGstMasterRoute
   '/admin/inventory': typeof AdminInventoryRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/materials': typeof AdminMaterialsRoute
   '/admin/mc': typeof AdminMcRouteWithChildren
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/pos': typeof AdminPosRoute
@@ -360,7 +382,9 @@ export interface FileRoutesByTo {
   '/admin/purchases': typeof AdminPurchasesRoute
   '/admin/reports': typeof AdminReportsRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/slots': typeof AdminSlotsRoute
   '/admin/suppliers': typeof AdminSuppliersRoute
+  '/admin/supplies': typeof AdminSuppliesRoute
   '/admin/users': typeof AdminUsersRoute
   '/category/$slug': typeof CategorySlugRoute
   '/product/$slug': typeof ProductSlugRoute
@@ -401,6 +425,7 @@ export interface FileRoutesById {
   '/admin/gst-master': typeof AdminGstMasterRoute
   '/admin/inventory': typeof AdminInventoryRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/materials': typeof AdminMaterialsRoute
   '/admin/mc': typeof AdminMcRouteWithChildren
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/pos': typeof AdminPosRoute
@@ -409,7 +434,9 @@ export interface FileRoutesById {
   '/admin/purchases': typeof AdminPurchasesRoute
   '/admin/reports': typeof AdminReportsRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/slots': typeof AdminSlotsRoute
   '/admin/suppliers': typeof AdminSuppliersRoute
+  '/admin/supplies': typeof AdminSuppliesRoute
   '/admin/users': typeof AdminUsersRoute
   '/category/$slug': typeof CategorySlugRoute
   '/product/$slug': typeof ProductSlugRoute
@@ -450,6 +477,7 @@ export interface FileRouteTypes {
     | '/admin/gst-master'
     | '/admin/inventory'
     | '/admin/login'
+    | '/admin/materials'
     | '/admin/mc'
     | '/admin/orders'
     | '/admin/pos'
@@ -458,7 +486,9 @@ export interface FileRouteTypes {
     | '/admin/purchases'
     | '/admin/reports'
     | '/admin/settings'
+    | '/admin/slots'
     | '/admin/suppliers'
+    | '/admin/supplies'
     | '/admin/users'
     | '/category/$slug'
     | '/product/$slug'
@@ -496,6 +526,7 @@ export interface FileRouteTypes {
     | '/admin/gst-master'
     | '/admin/inventory'
     | '/admin/login'
+    | '/admin/materials'
     | '/admin/mc'
     | '/admin/orders'
     | '/admin/pos'
@@ -504,7 +535,9 @@ export interface FileRouteTypes {
     | '/admin/purchases'
     | '/admin/reports'
     | '/admin/settings'
+    | '/admin/slots'
     | '/admin/suppliers'
+    | '/admin/supplies'
     | '/admin/users'
     | '/category/$slug'
     | '/product/$slug'
@@ -544,6 +577,7 @@ export interface FileRouteTypes {
     | '/admin/gst-master'
     | '/admin/inventory'
     | '/admin/login'
+    | '/admin/materials'
     | '/admin/mc'
     | '/admin/orders'
     | '/admin/pos'
@@ -552,7 +586,9 @@ export interface FileRouteTypes {
     | '/admin/purchases'
     | '/admin/reports'
     | '/admin/settings'
+    | '/admin/slots'
     | '/admin/suppliers'
+    | '/admin/supplies'
     | '/admin/users'
     | '/category/$slug'
     | '/product/$slug'
@@ -732,6 +768,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLoginRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/materials': {
+      id: '/admin/materials'
+      path: '/materials'
+      fullPath: '/admin/materials'
+      preLoaderRoute: typeof AdminMaterialsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/mc': {
       id: '/admin/mc'
       path: '/mc'
@@ -788,11 +831,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSettingsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/slots': {
+      id: '/admin/slots'
+      path: '/slots'
+      fullPath: '/admin/slots'
+      preLoaderRoute: typeof AdminSlotsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/suppliers': {
       id: '/admin/suppliers'
       path: '/suppliers'
       fullPath: '/admin/suppliers'
       preLoaderRoute: typeof AdminSuppliersRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/supplies': {
+      id: '/admin/supplies'
+      path: '/supplies'
+      fullPath: '/admin/supplies'
+      preLoaderRoute: typeof AdminSuppliesRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/users': {
@@ -984,6 +1041,7 @@ interface AdminRouteRouteChildren {
   AdminGstMasterRoute: typeof AdminGstMasterRoute
   AdminInventoryRoute: typeof AdminInventoryRoute
   AdminLoginRoute: typeof AdminLoginRoute
+  AdminMaterialsRoute: typeof AdminMaterialsRoute
   AdminMcRoute: typeof AdminMcRouteWithChildren
   AdminOrdersRoute: typeof AdminOrdersRoute
   AdminPosRoute: typeof AdminPosRoute
@@ -992,7 +1050,9 @@ interface AdminRouteRouteChildren {
   AdminPurchasesRoute: typeof AdminPurchasesRoute
   AdminReportsRoute: typeof AdminReportsRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminSlotsRoute: typeof AdminSlotsRoute
   AdminSuppliersRoute: typeof AdminSuppliersRoute
+  AdminSuppliesRoute: typeof AdminSuppliesRoute
   AdminUsersRoute: typeof AdminUsersRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -1006,6 +1066,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminGstMasterRoute: AdminGstMasterRoute,
   AdminInventoryRoute: AdminInventoryRoute,
   AdminLoginRoute: AdminLoginRoute,
+  AdminMaterialsRoute: AdminMaterialsRoute,
   AdminMcRoute: AdminMcRouteWithChildren,
   AdminOrdersRoute: AdminOrdersRoute,
   AdminPosRoute: AdminPosRoute,
@@ -1014,7 +1075,9 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminPurchasesRoute: AdminPurchasesRoute,
   AdminReportsRoute: AdminReportsRoute,
   AdminSettingsRoute: AdminSettingsRoute,
+  AdminSlotsRoute: AdminSlotsRoute,
   AdminSuppliersRoute: AdminSuppliersRoute,
+  AdminSuppliesRoute: AdminSuppliesRoute,
   AdminUsersRoute: AdminUsersRoute,
   AdminIndexRoute: AdminIndexRoute,
 }

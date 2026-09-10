@@ -112,19 +112,34 @@ function Slots() {
       };
 
       if (editingId) {
-        const { error } = await supabase.from("slots").update(payload).eq("id", editingId);
-        if (error) throw error;
+        const { data, error } = await supabase.from("slots").update(payload).eq("id", editingId).select();
+        if (error) {
+          console.error("[Slots] Update error:", error);
+          throw error;
+        }
+        if (!data || data.length === 0) {
+          console.error("[Slots] Update returned no rows — possible RLS issue");
+          throw new Error("Update failed — no rows affected. Check your permissions.");
+        }
         toast.success("Slot updated");
       } else {
-        const { error } = await supabase.from("slots").insert(payload);
-        if (error) throw error;
+        const { data, error } = await supabase.from("slots").insert(payload).select();
+        if (error) {
+          console.error("[Slots] Insert error:", error);
+          throw error;
+        }
+        if (!data || data.length === 0) {
+          console.error("[Slots] Insert returned no data — possible RLS issue");
+          throw new Error("Insert failed — no data returned. Check your permissions.");
+        }
         toast.success("Slot created");
       }
       resetForm();
       qc.invalidateQueries({ queryKey: ["slots"] });
       qc.invalidateQueries({ queryKey: ["slots-lite"] });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save");
+      console.error("[Slots] Save failed:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to save slot");
     } finally {
       setSaving(false);
     }

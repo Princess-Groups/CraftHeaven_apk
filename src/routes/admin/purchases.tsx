@@ -445,8 +445,15 @@ const SupplierCombobox = memo(function SupplierCombobox({
         phone: newSupPhone.trim() || null,
         gstin: newSupGstin.trim() || null,
       };
-      const { error } = await supabase.from("suppliers").insert(payload);
-      if (error) throw error;
+      const { data, error } = await supabase.from("suppliers").insert(payload).select();
+      if (error) {
+        console.error("[Purchases] Supplier insert error:", error);
+        throw error;
+      }
+      if (!data || data.length === 0) {
+        console.error("[Purchases] Supplier insert returned no data — possible RLS issue");
+        throw new Error("Supplier insert returned no data. Check your permissions.");
+      }
       toast.success("Supplier added");
       qc.invalidateQueries({ queryKey: ["suppliers-lite"] });
       qc.invalidateQueries({ queryKey: ["sup"] });
@@ -458,6 +465,7 @@ const SupplierCombobox = memo(function SupplierCombobox({
       setNewSupPhone("");
       setNewSupGstin("");
     } catch (err) {
+      console.error("[Purchases] Supplier save failed:", err);
       toast.error(err instanceof Error ? err.message : "Failed to add supplier");
     } finally {
       setSavingNew(false);
@@ -744,12 +752,13 @@ const ProductNameCombobox = memo(function ProductNameCombobox({
         value={inputVal}
         onChange={(e) => {
           setInputVal(e.target.value);
+          onChange(e.target.value);
           setHighlightIdx(-1);
           if (!open) setOpen(true);
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
-        placeholder="Type to search materials…"
+        placeholder="Type to search or enter product name…"
         className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
         autoComplete="off"
       />
@@ -873,18 +882,24 @@ const CategoryCombobox = memo(function CategoryCombobox({
         .insert({ name: newCatName.trim(), slug })
         .select("id,name")
         .single();
-      if (error) throw error;
+      if (error) {
+        console.error("[Purchases] Category insert error:", error);
+        throw error;
+      }
+      if (!newCat) {
+        console.error("[Purchases] Category insert returned no data — possible RLS issue");
+        throw new Error("Category insert returned no data. Check your permissions.");
+      }
       toast.success("Category added");
       qc.invalidateQueries({ queryKey: ["cats-lite"] });
       qc.invalidateQueries({ queryKey: ["admin-cats"] });
       if (onCategoryAdded) onCategoryAdded();
       // Auto-select the newly created category
-      if (newCat) {
-        selectCategory(newCat.id, newCat.name);
-      }
+      selectCategory(newCat.id, newCat.name);
       setShowAddModal(false);
       setNewCatName("");
     } catch (err) {
+      console.error("[Purchases] Category save failed:", err);
       toast.error(err instanceof Error ? err.message : "Failed to add category");
     } finally {
       setSavingNew(false);
@@ -1153,17 +1168,23 @@ const MaterialCombobox = memo(function MaterialCombobox({
         .insert({ name: newMatName.trim(), category_id: categoryId, is_active: true })
         .select("id,name")
         .single();
-      if (error) throw error;
+      if (error) {
+        console.error("[Purchases] Material insert error:", error);
+        throw error;
+      }
+      if (!newMat) {
+        console.error("[Purchases] Material insert returned no data — possible RLS issue");
+        throw new Error("Material insert returned no data. Check your permissions.");
+      }
       toast.success("Material added");
       qc.invalidateQueries({ queryKey: ["materials-lite"] });
       qc.invalidateQueries({ queryKey: ["admin-materials"] });
       if (onMaterialAdded) onMaterialAdded();
-      if (newMat) {
-        selectMaterial(newMat.id, newMat.name);
-      }
+      selectMaterial(newMat.id, newMat.name);
       setShowAddModal(false);
       setNewMatName("");
     } catch (err) {
+      console.error("[Purchases] Material save failed:", err);
       toast.error(err instanceof Error ? err.message : "Failed to add material");
     } finally {
       setSavingNew(false);
@@ -1389,12 +1410,19 @@ function Purchases() {
         is_active: true,
       };
       const { data: newSlot, error } = await supabase.from("slots").insert(payload).select("id,name,packing_charges,freight_charges,other_charges,total_quantity,total_charges").single();
-      if (error) throw error;
+      if (error) {
+        console.error("[Purchases] Slot insert error:", error);
+        throw error;
+      }
+      if (!newSlot) {
+        console.error("[Purchases] Slot insert returned no data — possible RLS issue");
+        throw new Error("Slot insert returned no data. Check your permissions.");
+      }
       toast.success("Slot created");
       qc.invalidateQueries({ queryKey: ["slots"] });
       qc.invalidateQueries({ queryKey: ["slots-lite"] });
       // Auto-select the new slot in the row
-      if (newSlot && addSlotIdx !== null) {
+      if (addSlotIdx !== null && addSlotIdx >= 0 && addSlotIdx < rows.length) {
         const slotPerUnit = totalUnits > 0 ? totalAmount / totalUnits : 0;
         const productQty = Number(rows[addSlotIdx]?.quantity) || 0;
         const totalPF = Math.round(slotPerUnit * productQty * 100) / 100;
@@ -1411,6 +1439,7 @@ function Purchases() {
       setNewSlotTotalUnits(0);
       setNewSlotNotes("");
     } catch (err) {
+      console.error("[Purchases] Slot save failed:", err);
       toast.error(err instanceof Error ? err.message : "Failed to create slot");
     } finally {
       setSavingNewSlot(false);
@@ -1522,6 +1551,95 @@ function Purchases() {
   useEffect(() => {
     setDrafts(loadDrafts());
   }, []);
+
+  // Fetch recent purchase data via useQuery
+  const { data: recentPurchaseData } = useQuery({
+    queryKey: ["recent-purchase-load"],
+    enabled: !restockId,
+    queryFn: async () => {
+      // 1. Get most recent purchase
+      const { data: purchase } = await supabase
+        .from("purchases")
+        .select("id, supplier_id")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      if (!purchase) return null;
+
+      // 2. Get supplier name
+      let supplierName = "";
+      if (purchase.supplier_id) {
+        const { data: sup } = await supabase
+          .from("suppliers")
+          .select("name")
+          .eq("id", purchase.supplier_id)
+          .single();
+        supplierName = sup?.name ?? "";
+      }
+
+      // 3. Get purchase items
+      const { data: items } = await supabase
+        .from("purchase_items")
+        .select("product_id, quantity, unit_cost, slot_number, slot_charge_per_product, unit")
+        .eq("purchase_id", purchase.id);
+      if (!items || items.length === 0) return null;
+
+      // 4. Get product details
+      const productIds = [...new Set(items.map((i) => i.product_id).filter(Boolean))];
+      if (productIds.length === 0) return null;
+
+      const { data: products } = await supabase
+        .from("products")
+        .select("id, name, barcode, category_id, price, purchase_price, stock, reorder_level, unit, image_urls, color_variations")
+        .in("id", productIds);
+
+      return { items, products: products ?? [], supplierName };
+    },
+  });
+
+  // Apply recent purchase data to rows
+  useEffect(() => {
+    if (!recentPurchaseData || rows.length > 0) return;
+    const { items, products: productList, supplierName } = recentPurchaseData;
+    const productMap = new Map(productList.map((p: any) => [p.id, p]));
+
+    const mappedRows: ProductRow[] = items.map((item: any, i: number) => {
+      const product = productMap.get(item.product_id);
+      const catName = product?.category_id
+        ? (categories ?? []).find((c) => c.id === product.category_id)?.name ?? product.category_id
+        : null;
+      const assignedGst = autoAssignGst(product?.name ?? "", catName, undefined, null);
+      return {
+        ...blankRow(i + 1),
+        id: item.product_id ?? "",
+        barcode: product?.barcode ?? "",
+        name: product?.name ?? "",
+        category_id: product?.category_id ?? "",
+        supplier_name: supplierName,
+        gst_rate: assignedGst,
+        gst_is_custom: false,
+        current_stock: Number(product?.stock ?? 0),
+        minimum_stock: Number(product?.reorder_level ?? 5),
+        per_packet_unit: item.unit ?? product?.unit ?? "Nos",
+        unit_price: Number(item.unit_cost ?? product?.purchase_price ?? 0),
+        retail_selling_price: Number(product?.price ?? 0),
+        quantity: Number(item.quantity ?? 1),
+        slot_id: item.slot_number ?? "",
+        slot_charge_per_product: Number(item.slot_charge_per_product ?? 0),
+        image_url: product?.image_urls?.[0] ?? "",
+        color_variants: Array.isArray(product?.color_variations)
+          ? (product.color_variations as any[]).map((v: any) => ({
+              _id: uid(),
+              color_name: v.color || "",
+              color_code: v.color_code || "",
+              color_image: v.image_url || "",
+              quantity: Number(v.quantity) || 0,
+            }))
+          : [],
+      };
+    });
+    setRows(mappedRows);
+  }, [recentPurchaseData, categories]);
 
   // Save as Draft function
   const saveAsDraft = useCallback(() => {
@@ -1762,11 +1880,14 @@ function Purchases() {
           .select("id")
           .ilike("name", row.supplier_name.trim());
         if (!existingSuppliers?.length) {
-          const { error: supErr } = await supabase
+          const { data: newSup, error: supErr } = await supabase
             .from("suppliers")
-            .insert({ name: row.supplier_name.trim() });
+            .insert({ name: row.supplier_name.trim() })
+            .select("id")
+            .single();
           if (supErr) {
-            console.error("Failed to add supplier:", supErr);
+            console.error("[Purchases] Supplier auto-create error:", supErr);
+            // Don't block product save for supplier failure — just log it
           } else {
             qc.invalidateQueries({ queryKey: ["suppliers-lite"] });
           }
@@ -1785,8 +1906,8 @@ function Purchases() {
         category_id: row.category_id || null,
         price: Number(row.retail_selling_price) || 0,
         purchase_price: Number(row.unit_price) || 0,
-        stock: Number(row.current_stock) || 0,
-        reorder_level: Number(row.minimum_stock) || 5,
+        stock: Math.round(Number(row.current_stock) || 0),
+        reorder_level: Math.round(Number(row.minimum_stock) || 5),
         unit: row.per_packet_unit || "Nos",
         image_urls: row.image_url ? [row.image_url] : [],
         color: row.colour || null,
@@ -1795,20 +1916,28 @@ function Purchases() {
           color: v.color_name || v.color_code || "",
           color_code: v.color_code || "",
           image_url: v.color_image || "",
-          quantity: Number(v.quantity) || 0,
+          quantity: Math.round(Number(v.quantity) || 0),
           sold: 0,
-          remaining: Number(v.quantity) || 0,
+          remaining: Math.round(Number(v.quantity) || 0),
         })),
       };
 
       if (row.id) {
-        await supabase.from("products").update(productPayload).eq("id", row.id);
+        const { error: updateErr } = await supabase.from("products").update(productPayload).eq("id", row.id);
+        if (updateErr) {
+          console.error("[Purchases] Product update error:", updateErr);
+          throw updateErr;
+        }
       } else {
-        const { data: newProduct } = await supabase
+        const { data: newProduct, error: insertErr } = await supabase
           .from("products")
           .insert(productPayload)
           .select("id")
           .single();
+        if (insertErr) {
+          console.error("[Purchases] Product insert error:", insertErr);
+          throw insertErr;
+        }
         if (newProduct) {
           patchRow(editingIdx, { id: newProduct.id });
         }
@@ -1841,7 +1970,11 @@ function Purchases() {
         if (existing?.length) {
           supplierId = existing[0].id;
         } else {
-          const { data: newSup } = await supabase.from("suppliers").insert({ name: supplierName }).select("id").single();
+          const { data: newSup, error: supInsertErr } = await supabase.from("suppliers").insert({ name: supplierName }).select("id").single();
+          if (supInsertErr) {
+            console.error("[Purchases] Supplier auto-create error:", supInsertErr);
+            throw new Error("Failed to create supplier: " + supInsertErr.message);
+          }
           if (newSup) {
             supplierId = newSup.id;
             qc.invalidateQueries({ queryKey: ["suppliers-lite"] });
@@ -1865,7 +1998,7 @@ function Purchases() {
         size: null,
         unit_cost: Number(r.unit_price) || 0,
         selling_price: Number(r.retail_selling_price) || 0,
-        quantity: Number(r.quantity) || 1,
+        quantity: Math.round(Number(r.quantity) || 1),
         slot_number: r.slot_id || null,
         color_variations: (r.color_variants || []).map((v) => ({
           color: v.color_name || v.color_code || "",
@@ -1879,11 +2012,11 @@ function Purchases() {
 
       // Call the create RPC
       const { data: purchaseId, error: rpcErr } = await supabase.rpc("create_purchase_with_products", {
-        _supplier_id: supplierId ?? "",
-        _invoice_no: recalcRows[0]?.supplier_bill_no || "",
+        _items: items,
+        _supplier_id: supplierId || undefined,
+        _invoice_no: recalcRows[0]?.supplier_bill_no || undefined,
         _purchase_date: recalcRows[0]?.date || new Date().toISOString().slice(0, 10),
         _notes: undefined,
-        _items: items,
         _purchase_packing_freight_charge: totalCombinedCharge,
       });
 

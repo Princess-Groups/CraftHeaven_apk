@@ -103,19 +103,34 @@ function Suppliers() {
       };
 
       if (editingId) {
-        const { error } = await supabase.from("suppliers").update(payload).eq("id", editingId);
-        if (error) throw error;
+        const { data, error } = await supabase.from("suppliers").update(payload).eq("id", editingId).select();
+        if (error) {
+          console.error("[Suppliers] Update error:", error);
+          throw error;
+        }
+        if (!data || data.length === 0) {
+          console.error("[Suppliers] Update returned no rows — possible RLS issue");
+          throw new Error("Update failed — no rows affected. Check your permissions.");
+        }
         toast.success("Supplier updated");
       } else {
-        const { error } = await supabase.from("suppliers").insert(payload);
-        if (error) throw error;
+        const { data, error } = await supabase.from("suppliers").insert(payload).select();
+        if (error) {
+          console.error("[Suppliers] Insert error:", error);
+          throw error;
+        }
+        if (!data || data.length === 0) {
+          console.error("[Suppliers] Insert returned no data — possible RLS issue");
+          throw new Error("Insert failed — no data returned. Check your permissions.");
+        }
         toast.success("Supplier added");
       }
       resetForm();
       qc.invalidateQueries({ queryKey: ["sup"] });
       qc.invalidateQueries({ queryKey: ["suppliers-lite"] });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save");
+      console.error("[Suppliers] Save failed:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to save supplier");
     } finally {
       setSaving(false);
     }
