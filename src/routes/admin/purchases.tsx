@@ -967,38 +967,27 @@ const CategoryCombobox = memo(function CategoryCombobox({
   return (
     <>
       <div ref={wrapperRef} className="relative">
-        <input
-          ref={inputRef}
-          type="text"
-          value={effectiveInputVal}
-          onChange={(e) => {
-            setInputVal(e.target.value);
-            setHighlightIdx(-1);
-            if (!open) setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type to search categories…"
-          className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-          autoComplete="off"
-        />
+        <div className="flex items-center border border-border bg-white rounded-lg focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary">
+          <Search className="ml-3 h-4 w-4 shrink-0 text-muted-foreground/50" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={effectiveInputVal}
+            onChange={(e) => {
+              setInputVal(e.target.value);
+              setHighlightIdx(-1);
+              if (!open) setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type to search categories…"
+            className="w-full bg-transparent px-3 py-2 text-sm outline-none"
+            autoComplete="off"
+          />
+        </div>
         {open && (
           <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col">
-            <div className="flex items-center border-b px-3 shrink-0">
-              <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-              <input
-                type="text"
-                value={inputVal}
-                onChange={(e) => {
-                  setInputVal(e.target.value);
-                  setHighlightIdx(-1);
-                }}
-                onKeyDown={handleKeyDown}
-                placeholder="Search categories…"
-                className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-              />
-            </div>
-            <div className="max-h-52 overflow-y-auto p-1">
+            <div className="max-h-56 overflow-y-auto p-1">
               {value && (
                 <button
                   type="button"
@@ -1253,36 +1242,28 @@ const MaterialCombobox = memo(function MaterialCombobox({
   return (
     <>
       <div ref={wrapperRef} className="relative">
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputVal}
-          onChange={(e) => {
-            setInputVal(e.target.value);
-            setHighlightIdx(-1);
-            if (!open) setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={handleKeyDown}
-          placeholder={categoryId ? "Type to search all materials…" : "Select category first…"}
-          disabled={!categoryId}
-          className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:bg-muted/50 disabled:cursor-not-allowed"
-          autoComplete="off"
-        />
+        <div className={`flex items-center border border-border bg-white rounded-lg focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary ${!categoryId ? "bg-muted/50" : ""}`}>
+          <Search className="ml-3 h-4 w-4 shrink-0 text-muted-foreground/50" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputVal}
+            onChange={(e) => {
+              setInputVal(e.target.value);
+              setHighlightIdx(-1);
+              if (!open) setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={handleKeyDown}
+            placeholder={categoryId ? "Type to search all materials…" : "Select category first…"}
+            disabled={!categoryId}
+            className="w-full bg-transparent px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:text-muted-foreground"
+            autoComplete="off"
+          />
+        </div>
         {open && categoryId && (
           <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-white shadow-lg max-h-60 overflow-hidden flex flex-col">
-            <div className="flex items-center border-b px-3 shrink-0">
-              <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-              <input
-                type="text"
-                value={inputVal}
-                onChange={(e) => { setInputVal(e.target.value); setHighlightIdx(-1); }}
-                onKeyDown={handleKeyDown}
-                placeholder="Search all materials…"
-                className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-              />
-            </div>
-            <div className="max-h-52 overflow-y-auto p-1">
+            <div className="max-h-56 overflow-y-auto p-1">
               {value && (
                 <button type="button" onMouseDown={(e) => { e.preventDefault(); selectMaterial("", ""); }}
                   onMouseEnter={() => setHighlightIdx(0)}
@@ -1539,6 +1520,12 @@ function Purchases() {
           .order("name")
       ).data ?? [],
   });
+
+  // Filter out materials with empty/null names
+  const validMaterials = useMemo(
+    () => (allMaterials ?? []).filter((m) => m.name && m.name.trim().length > 0),
+    [allMaterials]
+  );
 
   // Slots for slot selection
   const { data: slotsList } = useQuery({
@@ -2019,16 +2006,21 @@ function Purchases() {
       }));
 
       // Call the create RPC
-      const { data: purchaseId, error: rpcErr } = await supabase.rpc("create_purchase_with_products", {
+      const rpcParams = {
         _items: items,
-        _supplier_id: supplierId || undefined,
-        _invoice_no: recalcRows[0]?.supplier_bill_no || undefined,
+        _supplier_id: supplierId || null,
+        _invoice_no: recalcRows[0]?.supplier_bill_no || null,
         _purchase_date: recalcRows[0]?.date || new Date().toISOString().slice(0, 10),
-        _notes: undefined,
+        _notes: null,
         _purchase_packing_freight_charge: totalCombinedCharge,
-      });
+      };
+      console.log("[Purchases] RPC params:", JSON.stringify(rpcParams, null, 2));
+      const { data: purchaseId, error: rpcErr } = await supabase.rpc("create_purchase_with_products", rpcParams);
 
-      if (rpcErr) throw rpcErr;
+      if (rpcErr) {
+        console.error("[Purchases] RPC error:", rpcErr);
+        throw rpcErr;
+      }
       if (!purchaseId) throw new Error("Failed to create purchase");
 
       // Persist slot charges via upsert_purchase_slot for each unique slot
@@ -2050,8 +2042,10 @@ function Purchases() {
       setFormOpen(false);
       setEditingIdx(null);
       qc.invalidateQueries();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to submit purchase");
+    } catch (err: any) {
+      console.error("[Purchases] Submit failed:", err);
+      const msg = err?.message || err?.error?.message || err?.details || "Failed to submit purchase";
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -2286,7 +2280,7 @@ function Purchases() {
             value={String(row.material || "")}
             onChange={(val) => patchRow(idx, { material: val })}
             categoryId={String(row.category_id || "")}
-            materials={allMaterials ?? []}
+            materials={validMaterials}
             onMaterialAdded={() => {
               qc.invalidateQueries({ queryKey: ["materials-lite"] });
               qc.invalidateQueries({ queryKey: ["admin-materials"] });
@@ -2782,7 +2776,7 @@ function Purchases() {
 
       {/* ====== INLINE PRODUCT ENTRY FORM ====== */}
       {formOpen && activeRow && (
-        <div className="rounded-xl border-2 border-primary/30 bg-white shadow-card overflow-hidden">
+        <div className="rounded-xl border-2 border-primary/30 bg-white shadow-card overflow-visible">
           {/* Form Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border-b border-border">
             <div className="flex items-center gap-3">
@@ -3051,8 +3045,21 @@ function Purchases() {
               </div>
             )}
 
-            {/* Save button at bottom */}
-            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-border">
+            {/* Single Product Cost Display + Save buttons */}
+            <div className="mt-4 pt-3 border-t border-border">
+              {activeRow && (
+                <div className="flex items-center gap-4 mb-3">
+                  <div className="text-xs text-muted-foreground">
+                    <span className="font-semibold">Single Product Cost:</span>{" "}
+                    <span className="font-bold text-primary text-sm">₹{Number(calculatedRows[editingIdx!]?.total_unit_cost ?? 0).toFixed(2)}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    <span className="font-semibold">Final Purchase Cost:</span>{" "}
+                    <span className="font-bold text-emerald-600 text-sm">₹{Number(calculatedRows[editingIdx!]?.final_purchase_cost ?? 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
               <button
                 onClick={cancelForm}
                 className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
@@ -3083,6 +3090,7 @@ function Purchases() {
               </button>
             </div>
           </div>
+        </div>
         </div>
       )}
 
@@ -3154,9 +3162,37 @@ function Purchases() {
               </table>
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-border bg-white/50 py-12 text-center">
-              <p className="text-sm text-muted-foreground">No products added yet.</p>
-              <p className="text-xs text-muted-foreground/70 mt-1">Click <strong>+ Add Product</strong> to begin.</p>
+            <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-muted border-b border-border">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">All Products ({existingProducts?.length ?? 0})</h3>
+              </div>
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-muted/50">
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center border-b border-border w-12">#</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-left border-b border-border">Product Name</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center border-b border-border">Stock</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-right border-b border-border">Price</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-right border-b border-border">Purchase Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(existingProducts ?? []).map((p, i) => (
+                    <tr key={p.id} className="border-b border-border/50 last:border-0 hover:bg-secondary-soft/30 transition">
+                      <td className="px-3 py-2.5 text-center text-xs text-muted-foreground font-semibold">{i + 1}</td>
+                      <td className="px-3 py-2.5 text-xs font-semibold text-foreground">{p.name || <span className="text-muted-foreground italic">No name</span>}</td>
+                      <td className="px-3 py-2.5 text-center text-xs font-semibold text-foreground">{p.stock ?? 0}</td>
+                      <td className="px-3 py-2.5 text-right text-xs font-semibold text-foreground">₹{Number(p.price ?? 0).toFixed(2)}</td>
+                      <td className="px-3 py-2.5 text-right text-xs font-semibold text-foreground">₹{Number(p.purchase_price ?? 0).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                  {(!existingProducts || existingProducts.length === 0) && (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-8 text-center text-xs text-muted-foreground">No products added yet. Click <strong>+ Add Product</strong> to begin.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           )}
 
