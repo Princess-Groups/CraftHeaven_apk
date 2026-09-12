@@ -449,6 +449,16 @@ function Products() {
                   className={inputCls}
                 />
               </Field>
+              <Field label="Final Price (per unit, incl. GST)">
+                <div className={`${inputCls} bg-muted border-dashed cursor-default font-semibold text-secondary`}>
+                  ₹{(() => {
+                    const base = Number(editing.discount_price) || Number(editing.price) || 0;
+                    const gst = Number(editing.gst_rate) || 0;
+                    const finalPrice = base * (1 + gst / 100);
+                    return finalPrice > 0 ? finalPrice.toFixed(2) : "0.00";
+                  })()}
+                </div>
+              </Field>
               <Field label="Stock (decimal supported)">
                 <div className="flex gap-2">
                   <input
