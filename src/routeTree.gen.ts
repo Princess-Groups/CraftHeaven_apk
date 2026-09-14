@@ -29,6 +29,7 @@ import { Route as AdminCategoriesRouteImport } from './routes/admin/categories'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminGstMasterRouteImport } from './routes/admin/gst-master'
 import { Route as AdminInventoryRouteImport } from './routes/admin/inventory'
+import { Route as AdminLabelPrintingRouteImport } from './routes/admin/label-printing'
 import { Route as AdminLoginRouteImport } from './routes/admin/login'
 import { Route as AdminMaterialsRouteImport } from './routes/admin/materials'
 import { Route as AdminMcRouteImport } from './routes/admin/mc'
@@ -156,6 +157,11 @@ const AdminGstMasterRoute = AdminGstMasterRouteImport.update({
 const AdminInventoryRoute = AdminInventoryRouteImport.update({
   id: '/inventory',
   path: '/inventory',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminLabelPrintingRoute = AdminLabelPrintingRouteImport.update({
+  id: '/label-printing',
+  path: '/label-printing',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminLoginRoute = AdminLoginRouteImport.update({
@@ -323,6 +329,7 @@ export interface FileRoutesByFullPath {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/gst-master': typeof AdminGstMasterRoute
   '/admin/inventory': typeof AdminInventoryRoute
+  '/admin/label-printing': typeof AdminLabelPrintingRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/materials': typeof AdminMaterialsRoute
   '/admin/mc': typeof AdminMcRouteWithChildren
@@ -372,6 +379,7 @@ export interface FileRoutesByTo {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/gst-master': typeof AdminGstMasterRoute
   '/admin/inventory': typeof AdminInventoryRoute
+  '/admin/label-printing': typeof AdminLabelPrintingRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/materials': typeof AdminMaterialsRoute
   '/admin/mc': typeof AdminMcRouteWithChildren
@@ -424,6 +432,7 @@ export interface FileRoutesById {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/gst-master': typeof AdminGstMasterRoute
   '/admin/inventory': typeof AdminInventoryRoute
+  '/admin/label-printing': typeof AdminLabelPrintingRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/materials': typeof AdminMaterialsRoute
   '/admin/mc': typeof AdminMcRouteWithChildren
@@ -476,6 +485,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/gst-master'
     | '/admin/inventory'
+    | '/admin/label-printing'
     | '/admin/login'
     | '/admin/materials'
     | '/admin/mc'
@@ -525,6 +535,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/gst-master'
     | '/admin/inventory'
+    | '/admin/label-printing'
     | '/admin/login'
     | '/admin/materials'
     | '/admin/mc'
@@ -576,6 +587,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/gst-master'
     | '/admin/inventory'
+    | '/admin/label-printing'
     | '/admin/login'
     | '/admin/materials'
     | '/admin/mc'
@@ -759,6 +771,13 @@ declare module '@tanstack/react-router' {
       path: '/inventory'
       fullPath: '/admin/inventory'
       preLoaderRoute: typeof AdminInventoryRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/label-printing': {
+      id: '/admin/label-printing'
+      path: '/label-printing'
+      fullPath: '/admin/label-printing'
+      preLoaderRoute: typeof AdminLabelPrintingRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/login': {
@@ -1040,6 +1059,7 @@ interface AdminRouteRouteChildren {
   AdminCustomersRoute: typeof AdminCustomersRoute
   AdminGstMasterRoute: typeof AdminGstMasterRoute
   AdminInventoryRoute: typeof AdminInventoryRoute
+  AdminLabelPrintingRoute: typeof AdminLabelPrintingRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AdminMaterialsRoute: typeof AdminMaterialsRoute
   AdminMcRoute: typeof AdminMcRouteWithChildren
@@ -1065,6 +1085,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminCustomersRoute: AdminCustomersRoute,
   AdminGstMasterRoute: AdminGstMasterRoute,
   AdminInventoryRoute: AdminInventoryRoute,
+  AdminLabelPrintingRoute: AdminLabelPrintingRoute,
   AdminLoginRoute: AdminLoginRoute,
   AdminMaterialsRoute: AdminMaterialsRoute,
   AdminMcRoute: AdminMcRouteWithChildren,

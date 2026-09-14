@@ -2035,7 +2035,20 @@ function Purchases() {
         if (slotErr) console.error("Slot save error:", slotErr);
       }
 
-      toast.success(`Purchase submitted! ${recalcRows.length} products saved.`);
+      // Auto-create label batches for each slot used in this purchase
+      for (const slotId of slotIds) {
+        try {
+          const { error: labelErr } = await supabase.rpc("create_label_batch_for_slot", {
+            _slot_id: slotId,
+          });
+          if (labelErr) console.error("[Purchases] Label batch creation error:", labelErr);
+        } catch (labelErr) {
+          console.error("[Purchases] Label batch creation failed:", labelErr);
+          // Don't block purchase for label batch failure
+        }
+      }
+
+      toast.success(`Purchase submitted! ${recalcRows.length} products saved. Label batches created for ${slotIds.length} slot(s).`);
       setRows([]);
       setActiveDraftId(null);
       setSlotTotals({});

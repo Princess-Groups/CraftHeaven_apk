@@ -1919,6 +1919,163 @@ export type Database = {
         }
         Relationships: []
       }
+      label_batches: {
+        Row: {
+          id: string
+          slot_id: string
+          slot_name: string
+          status: string
+          total_labels_required: number
+          total_labels_printed: number
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          slot_id: string
+          slot_name: string
+          status?: string
+          total_labels_required?: number
+          total_labels_printed?: number
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          slot_id?: string
+          slot_name?: string
+          status?: string
+          total_labels_required?: number
+          total_labels_printed?: number
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "label_batches_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "slots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      label_batch_items: {
+        Row: {
+          id: string
+          batch_id: string
+          product_id: string | null
+          product_name: string
+          barcode: string | null
+          purchase_quantity: number
+          labels_to_print: number
+          labels_printed: number
+          labels_remaining: number
+          unit_price: number
+          selling_price: number
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          batch_id: string
+          product_id?: string | null
+          product_name: string
+          barcode?: string | null
+          purchase_quantity?: number
+          labels_to_print?: number
+          labels_printed?: number
+          labels_remaining?: never
+          unit_price?: number
+          selling_price?: number
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          batch_id?: string
+          product_id?: string | null
+          product_name?: string
+          barcode?: string | null
+          purchase_quantity?: number
+          labels_to_print?: number
+          labels_printed?: number
+          labels_remaining?: never
+          unit_price?: number
+          selling_price?: number
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "label_batch_items_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "label_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "label_batch_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      label_print_history: {
+        Row: {
+          id: string
+          batch_id: string
+          item_id: string | null
+          product_id: string | null
+          product_name: string
+          barcode: string | null
+          quantity_printed: number
+          printed_by: string | null
+          printed_at: string
+          notes: string | null
+        }
+        Insert: {
+          id?: string
+          batch_id: string
+          item_id?: string | null
+          product_id?: string | null
+          product_name: string
+          barcode?: string | null
+          quantity_printed?: number
+          printed_by?: string | null
+          printed_at?: string
+          notes?: string | null
+        }
+        Update: {
+          id?: string
+          batch_id?: string
+          item_id?: string | null
+          product_id?: string | null
+          product_name?: string
+          barcode?: string | null
+          quantity_printed?: number
+          printed_by?: string | null
+          printed_at?: string
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "label_print_history_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "label_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -2063,6 +2220,32 @@ export type Database = {
           _state?: string
         }
         Returns: string
+      }
+      create_label_batch_for_slot: {
+        Args: { _slot_id: string }
+        Returns: string
+      }
+      update_label_item_quantity: {
+        Args: { _item_id: string; _labels_to_print: number }
+        Returns: boolean
+      }
+      mark_labels_printed: {
+        Args: {
+          _batch_id: string
+          _item_ids?: string[] | null
+          _quantities?: number[] | null
+        }
+        Returns: number
+      }
+      get_slot_label_summary: {
+        Args: { _slot_id: string }
+        Returns: {
+          batch_id: string
+          batch_status: string
+          total_labels_required: number
+          total_labels_printed: number
+          product_count: number
+        }[]
       }
     }
     Enums: {

@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useMemo } from "react";
-import { Plus, Trash2, Search, Edit2, X, Loader2, Box, Calculator } from "lucide-react";
+import { Plus, Trash2, Search, Edit2, X, Loader2, Box, Calculator, Printer } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/slots")({
@@ -333,6 +334,14 @@ function Slots() {
                     <td className="p-3 text-xs text-right font-bold text-primary">₹{perUnit.toFixed(2)}</td>
                     <td className="p-3 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <Link
+                          to="/admin/label-printing"
+                          search={{ slot: s.id }}
+                          className="rounded p-1 hover:bg-emerald-50 transition"
+                          title="Print Labels for This Slot"
+                        >
+                          <Printer className="h-3.5 w-3.5 text-emerald-600" />
+                        </Link>
                         <button
                           onClick={() => startEdit(s)}
                           className="rounded p-1 hover:bg-primary/10 transition"

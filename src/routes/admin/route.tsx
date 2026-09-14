@@ -72,6 +72,7 @@ const NAV: { to: string; label: string; icon: React.ElementType; exact?: boolean
   { to: "/admin/purchases", label: "Purchase Entry", icon: ShoppingCart, exact: true },
   { to: "/admin/suppliers", label: "Suppliers", icon: Users, exact: true },
   { to: "/admin/slots", label: "Slot Management", icon: Box, exact: true },
+  { to: "/admin/label-printing", label: "Label Printing", icon: Tags, exact: true },
   { to: "/admin/billing", label: "Billing", icon: ScanBarcode },
   { to: "/admin/orders", label: "Orders", icon: ClipboardList },
   { to: "/admin/categories", label: "Categories & Materials", icon: Tags },
