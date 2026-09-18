@@ -103,6 +103,23 @@ type PrintHistory = {
   notes: string | null;
 };
 
+// Product details are loaded from products rather than the label batch snapshot
+// so changes are reflected before a label is printed.
+type SlotProduct = {
+  product_id: string | null;
+  quantity: number;
+  products: {
+    id: string;
+    name: string;
+    sku: string | null;
+    barcode: string | null;
+    price: number;
+    stock: number;
+    unit: string;
+    material: string | null;
+  } | null;
+};
+
 // ---------- Status Badge ----------
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, { bg: string; text: string; icon: React.ElementType }> = {
@@ -239,6 +256,31 @@ function LabelPrinting() {
       ).data ?? [],
   });
 
+  const {
+    data: slotProducts,
+    isLoading: slotProductsLoading,
+    refetch: refetchSlotProducts,
+  } = useQuery({
+    queryKey: ["slot-products-for-labels", selectedSlotId],
+    queryFn: async () => {
+      if (!selectedSlotId) return [] as SlotProduct[];
+      const { data, error } = await supabase
+        .from("purchase_items")
+        .select("product_id,quantity,products(id,name,sku,barcode,price,stock,unit,material)")
+        .eq("slot_number", selectedSlotId);
+      if (error) throw error;
+      return (data ?? []) as unknown as SlotProduct[];
+    },
+    enabled: !!selectedSlotId,
+    refetchOnWindowFocus: "always",
+    refetchInterval: 15_000,
+  });
+
+  const currentProductsById = useMemo(
+    () => new Map((slotProducts ?? []).flatMap((item) => item.products ? [[item.products.id, item.products] as const] : [])),
+    [slotProducts]
+  );
+
   // Fetch current batch for selected slot
   const { data: batch, isLoading: batchLoading } = useQuery({
     queryKey: ["label-batch", selectedSlotId],
@@ -291,12 +333,13 @@ function LabelPrinting() {
     if (!batchItems) return [];
     if (!search.trim()) return batchItems;
     const q = search.toLowerCase();
-    return batchItems.filter(
-      (item) =>
-        item.product_name?.toLowerCase().includes(q) ||
-        item.barcode?.toLowerCase().includes(q)
-    );
-  }, [batchItems, search]);
+    return batchItems.filter((item) => {
+      const product = item.product_id ? currentProductsById.get(item.product_id) : null;
+      return (product?.name ?? item.product_name)?.toLowerCase().includes(q)
+        || (product?.barcode ?? item.barcode)?.toLowerCase().includes(q)
+        || product?.sku?.toLowerCase().includes(q);
+    });
+  }, [batchItems, search, currentProductsById]);
 
   // Summary stats
   const stats = useMemo(() => {
@@ -389,17 +432,18 @@ function LabelPrinting() {
             const cfg = hwData?.config;
 
             // Convert to LabelItem format for print service
-            const labelItems: LabelItem[] = itemsToPrint.flatMap(item =>
-              Array(item.labels_to_print - item.labels_printed).fill(null).map(() => ({
-                productName: item.product_name,
-                sku: item.barcode || undefined,
-                barcode: item.barcode || "N/A",
-                sellingPrice: Number(item.selling_price || 0),
-                mrp: undefined, // Could add MRP from product data
+            const labelItems: LabelItem[] = itemsToPrint.flatMap(item => {
+              const product = item.product_id ? currentProductsById.get(item.product_id) : null;
+              return Array(item.labels_to_print - item.labels_printed).fill(null).map(() => ({
+                productName: product?.name ?? item.product_name,
+                sku: product?.sku ?? undefined,
+                barcode: product?.barcode ?? item.barcode ?? "N/A",
+                sellingPrice: Number(product?.price ?? item.selling_price ?? 0),
+                mrp: undefined,
                 offerPrice: undefined,
                 quantity: 1,
-              }))
-            );
+              }));
+            });
 
             const printJob: LabelPrintJob = {
               printerId: selectedPrinterId,
@@ -434,7 +478,7 @@ function LabelPrinting() {
         setPrinting(false);
       }
     },
-    [batch?.id, batchItems, selectedSlotId, selectedPrinterId, labelTemplate, hwData?.config, qc]
+    [batch?.id, batchItems, selectedSlotId, selectedPrinterId, labelTemplate, hwData?.config, currentProductsById, qc]
   );
 
   // Preview labels using print service
@@ -476,20 +520,21 @@ function LabelPrinting() {
         showStoreName: cfg?.label_show_store_name ?? labelTemplate.showStoreName,
         showStoreAddress: cfg?.label_show_store_address ?? labelTemplate.showStoreAddress,
       };
-      const labelItems: LabelItem[] = itemsToPrint.flatMap(item =>
-        Array(item.labels_to_print - item.labels_printed).fill(null).map(() => ({
-          productName: item.product_name,
-          sku: item.barcode || undefined,
-          barcode: item.barcode || "N/A",
-          sellingPrice: Number(item.selling_price || 0),
+      const labelItems: LabelItem[] = itemsToPrint.flatMap(item => {
+        const product = item.product_id ? currentProductsById.get(item.product_id) : null;
+        return Array(item.labels_to_print - item.labels_printed).fill(null).map(() => ({
+          productName: product?.name ?? item.product_name,
+          sku: product?.sku ?? undefined,
+          barcode: product?.barcode ?? item.barcode ?? "N/A",
+          sellingPrice: Number(product?.price ?? item.selling_price ?? 0),
           mrp: undefined,
           offerPrice: undefined,
           quantity: 1,
-        }))
-      );
+        }));
+      });
       openLabelPreview(labelItems, template, storeName, storeAddress);
     }
-  }, [batch?.id, batchItems, labelTemplate, hwData?.config]);
+  }, [batch?.id, batchItems, labelTemplate, hwData?.config, currentProductsById]);
 
   // Toggle item selection
   function toggleItem(id: string) {
@@ -605,6 +650,45 @@ function LabelPrinting() {
             </button>
           )}
         </div>
+
+        {selectedSlotId && (
+          <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-xs font-bold text-foreground">Current product details</p>
+              <button
+                type="button"
+                onClick={() => refetchSlotProducts()}
+                className="flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+              >
+                <RefreshCw className="h-3 w-3" /> Refresh
+              </button>
+            </div>
+            {slotProductsLoading ? (
+              <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading product details...</div>
+            ) : !slotProducts?.some((item) => item.products) ? (
+              <p className="py-2 text-xs text-muted-foreground">No product assigned to this slot.</p>
+            ) : (
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {slotProducts.filter((item) => item.products).map((item, index) => {
+                  const product = item.products!;
+                  return (
+                    <div key={`${item.product_id}-${index}`} className="rounded-md border border-border bg-white p-2.5 text-xs">
+                      <p className="font-semibold text-foreground">{product.name}</p>
+                      <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
+                        <span>SKU: <b className="text-foreground">{product.sku || "—"}</b></span>
+                        <span>Barcode: <b className="font-mono text-foreground">{product.barcode || "—"}</b></span>
+                        <span>Price: <b className="text-foreground">₹{Number(product.price).toFixed(2)}</b></span>
+                        <span>Slot qty: <b className="text-foreground">{item.quantity} {product.unit}</b></span>
+                        <span>Stock: <b className="text-foreground">{product.stock}</b></span>
+                        {product.material && <span>Material: <b className="text-foreground">{product.material}</b></span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Batch Summary */}
         {batch && (

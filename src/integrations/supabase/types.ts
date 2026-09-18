@@ -528,7 +528,7 @@ export type Database = {
         Row: {
           id: string
           line_total: number
-          product_id: string
+          product_id: string | null
           purchase_id: string
           quantity: number
           slot_charge_per_product: number
@@ -539,7 +539,7 @@ export type Database = {
         Insert: {
           id?: string
           line_total: number
-          product_id: string
+          product_id?: string | null
           purchase_id: string
           quantity: number
           slot_charge_per_product?: number
@@ -550,7 +550,7 @@ export type Database = {
         Update: {
           id?: string
           line_total?: number
-          product_id?: string
+          product_id?: string | null
           purchase_id?: string
           quantity?: number
           slot_charge_per_product?: number

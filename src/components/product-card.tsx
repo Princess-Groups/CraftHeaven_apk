@@ -71,12 +71,14 @@ export function ProductCard({ product }: { product: Product }) {
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-card transition hover:shadow-soft">
       <Link to="/product/$slug" params={{ slug: product.slug }} className="relative block">
         <div className="aspect-square overflow-hidden bg-primary-soft">
-          <img
-            src={product.image_urls[0]}
-            alt={product.name}
-            className="h-full w-full object-cover transition group-hover:scale-105"
-            loading="lazy"
-          />
+          {product.image_urls?.[0] ? (
+            <img
+              src={product.image_urls[0]}
+              alt={product.name}
+              className="h-full w-full object-cover transition group-hover:scale-105"
+              loading="lazy"
+            />
+          ) : null}
         </div>
         {hasDiscount ? (
           <span className="absolute left-2 top-2 rounded-full bg-warning px-2 py-0.5 text-[10px] font-semibold text-warning-foreground">
