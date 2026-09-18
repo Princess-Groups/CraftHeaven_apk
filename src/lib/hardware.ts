@@ -23,10 +23,14 @@ export type HardwareConfig = {
 
   // Receipt Printer
   receipt_printer_id: string | null;
+  receipt_printer_model: string | null;
+  receipt_connection_type: "usb" | "bluetooth" | "network" | null;
   receipt_paper_width: "58mm" | "80mm";
   receipt_auto_cut: boolean;
   receipt_open_cash_drawer: boolean;
   receipt_print_barcode: boolean;
+  receipt_print_logo: boolean;
+  receipt_print_gst_breakdown: boolean;
 
   // Label Printer
   label_printer_id: string | null;
@@ -118,10 +122,14 @@ export const saveHardwareConfig = createServerFn({ method: "POST" })
       scanner_timeout_ms: "scanner_timeout_ms",
       scanner_auto_submit: "scanner_auto_submit",
       receipt_printer_id: "receipt_printer_id",
+      receipt_printer_model: "receipt_printer_model",
+      receipt_connection_type: "receipt_connection_type",
       receipt_paper_width: "receipt_paper_width",
       receipt_auto_cut: "receipt_auto_cut",
       receipt_open_cash_drawer: "receipt_open_cash_drawer",
       receipt_print_barcode: "receipt_print_barcode",
+      receipt_print_logo: "receipt_print_logo",
+      receipt_print_gst_breakdown: "receipt_print_gst_breakdown",
       label_printer_id: "label_printer_id",
       label_width_mm: "label_width_mm",
       label_height_mm: "label_height_mm",
@@ -385,6 +393,8 @@ export const testReceiptPrinter = createServerFn({ method: "POST" })
         cutPaper: true,
         openCashDrawer: true,
         printBarcode: false,
+        printLogo: true,
+        printGstBreakdown: true,
       },
     };
 

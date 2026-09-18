@@ -50,6 +50,9 @@ export interface ReceiptPrintJob {
     tax: number;
     shippingCharge: number;
     grandTotal: number;
+    cgstAmount?: number;
+    sgstAmount?: number;
+    igstAmount?: number;
   };
   paymentMethod: "CASH" | "UPI" | "CARD" | "COD";
   footerLines?: string[];
@@ -58,6 +61,8 @@ export interface ReceiptPrintJob {
     openCashDrawer?: boolean;
     printBarcode?: boolean;
     barcodeData?: string;
+    printLogo?: boolean;
+    printGstBreakdown?: boolean;
   };
 }
 

@@ -14,11 +14,14 @@ import {
   ImageIcon,
   ChevronLeft,
   Percent,
+  Printer,
+  Tags,
 } from "lucide-react";
 import { toast } from "sonner";
 import { uploadProductImage } from "@/lib/upload";
 import { Label } from "@/components/ui/label";
 import { autoAssignGst, GST_RATES, GST_RATE_LABELS } from "@/lib/gst-config";
+import { Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/admin/purchases")({
   head: () => ({ meta: [{ title: "Purchase Entry — ACH Admin" }] }),
@@ -1350,6 +1353,7 @@ function Purchases() {
   const [drafts, setDrafts] = useState<DraftEntry[]>([]);
   const [showDrafts, setShowDrafts] = useState(false);
   const [slotTotals, setSlotTotals] = useState<Record<string, number>>({});
+  const [lastSubmittedPurchaseId, setLastSubmittedPurchaseId] = useState<string | null>(null);
 
   // Add New Slot modal state
   const [showAddSlotModal, setShowAddSlotModal] = useState(false);
@@ -2049,6 +2053,7 @@ function Purchases() {
       }
 
       toast.success(`Purchase submitted! ${recalcRows.length} products saved. Label batches created for ${slotIds.length} slot(s).`);
+      setLastSubmittedPurchaseId(purchaseId);
       setRows([]);
       setActiveDraftId(null);
       setSlotTotals({});
@@ -2682,6 +2687,56 @@ function Purchases() {
           <Search className="h-3.5 w-3.5" /> Refresh
         </button>
       </div>
+
+      {/* Barcode Sticker Printing Section - Shows after successful purchase */}
+      {lastSubmittedPurchaseId && !formOpen && (
+        <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 shadow-sm">
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+                  <Tags className="h-5 w-5 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-emerald-800">Purchase Completed Successfully!</h3>
+                  <p className="text-[11px] text-emerald-600">Your purchase has been saved. Ready to print barcode stickers?</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setLastSubmittedPurchaseId(null)}
+                className="rounded-lg p-1 hover:bg-emerald-100 transition"
+                title="Dismiss"
+              >
+                <X className="h-4 w-4 text-emerald-600" />
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                to="/admin/barcode-sticker-printing"
+                search={{ purchase_id: lastSubmittedPurchaseId ?? "" }}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                <span>Print Barcode Stickers</span>
+              </Link>
+              <Link
+                to="/admin/label-printing"
+                search={{ slot: "" }}
+                className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 transition"
+              >
+                <Tags className="h-3.5 w-3.5" />
+                <span>Label Printing (All Slots)</span>
+              </Link>
+              <button
+                onClick={() => setLastSubmittedPurchaseId(null)}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
+              >
+                <X className="h-3.5 w-3.5" /> Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Drafts Panel */}
       {drafts.length > 0 && !formOpen && (

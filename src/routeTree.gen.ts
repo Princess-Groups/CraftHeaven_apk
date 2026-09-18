@@ -23,6 +23,7 @@ import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedWishlistRouteImport } from './routes/_authenticated/wishlist'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin/analytics'
+import { Route as AdminBarcodeStickerPrintingRouteImport } from './routes/admin/barcode-sticker-printing'
 import { Route as AdminBillingRouteImport } from './routes/admin/billing'
 import { Route as AdminBrandsRouteImport } from './routes/admin/brands'
 import { Route as AdminCategoriesRouteImport } from './routes/admin/categories'
@@ -129,6 +130,12 @@ const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminBarcodeStickerPrintingRoute =
+  AdminBarcodeStickerPrintingRouteImport.update({
+    id: '/barcode-sticker-printing',
+    path: '/barcode-sticker-printing',
+    getParentRoute: () => AdminRouteRoute,
+  } as any)
 const AdminBillingRoute = AdminBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -323,6 +330,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof AuthenticatedProfileRoute
   '/wishlist': typeof AuthenticatedWishlistRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/barcode-sticker-printing': typeof AdminBarcodeStickerPrintingRoute
   '/admin/billing': typeof AdminBillingRoute
   '/admin/brands': typeof AdminBrandsRoute
   '/admin/categories': typeof AdminCategoriesRoute
@@ -373,6 +381,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileRoute
   '/wishlist': typeof AuthenticatedWishlistRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/barcode-sticker-printing': typeof AdminBarcodeStickerPrintingRoute
   '/admin/billing': typeof AdminBillingRoute
   '/admin/brands': typeof AdminBrandsRoute
   '/admin/categories': typeof AdminCategoriesRoute
@@ -426,6 +435,7 @@ export interface FileRoutesById {
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/wishlist': typeof AuthenticatedWishlistRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/barcode-sticker-printing': typeof AdminBarcodeStickerPrintingRoute
   '/admin/billing': typeof AdminBillingRoute
   '/admin/brands': typeof AdminBrandsRoute
   '/admin/categories': typeof AdminCategoriesRoute
@@ -479,6 +489,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/wishlist'
     | '/admin/analytics'
+    | '/admin/barcode-sticker-printing'
     | '/admin/billing'
     | '/admin/brands'
     | '/admin/categories'
@@ -529,6 +540,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/wishlist'
     | '/admin/analytics'
+    | '/admin/barcode-sticker-printing'
     | '/admin/billing'
     | '/admin/brands'
     | '/admin/categories'
@@ -581,6 +593,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profile'
     | '/_authenticated/wishlist'
     | '/admin/analytics'
+    | '/admin/barcode-sticker-printing'
     | '/admin/billing'
     | '/admin/brands'
     | '/admin/categories'
@@ -729,6 +742,13 @@ declare module '@tanstack/react-router' {
       path: '/analytics'
       fullPath: '/admin/analytics'
       preLoaderRoute: typeof AdminAnalyticsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/barcode-sticker-printing': {
+      id: '/admin/barcode-sticker-printing'
+      path: '/barcode-sticker-printing'
+      fullPath: '/admin/barcode-sticker-printing'
+      preLoaderRoute: typeof AdminBarcodeStickerPrintingRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/billing': {
@@ -1053,6 +1073,7 @@ const AdminMcRouteWithChildren =
 
 interface AdminRouteRouteChildren {
   AdminAnalyticsRoute: typeof AdminAnalyticsRoute
+  AdminBarcodeStickerPrintingRoute: typeof AdminBarcodeStickerPrintingRoute
   AdminBillingRoute: typeof AdminBillingRoute
   AdminBrandsRoute: typeof AdminBrandsRoute
   AdminCategoriesRoute: typeof AdminCategoriesRoute
@@ -1079,6 +1100,7 @@ interface AdminRouteRouteChildren {
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminAnalyticsRoute: AdminAnalyticsRoute,
+  AdminBarcodeStickerPrintingRoute: AdminBarcodeStickerPrintingRoute,
   AdminBillingRoute: AdminBillingRoute,
   AdminBrandsRoute: AdminBrandsRoute,
   AdminCategoriesRoute: AdminCategoriesRoute,

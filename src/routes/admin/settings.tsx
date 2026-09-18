@@ -352,7 +352,7 @@ function Settings() {
         <div className="mt-6 p-4 rounded-lg border border-border bg-muted/30 space-y-3">
           <div className="flex items-center gap-2">
             <Printer className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">Receipt Printer</h3>
+            <h3 className="text-sm font-semibold text-foreground">Receipt Printer (POSIFLOW CN811)</h3>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <WField label="Receipt Printer">
@@ -367,6 +367,17 @@ function Settings() {
                 ))}
               </select>
             </WField>
+            <WField label="Connection Type">
+              <select
+                value={hardwareForm?.receipt_connection_type ?? hwData?.config?.receipt_connection_type ?? "usb"}
+                onChange={e => setHardwareForm({ ...hardwareForm, receipt_connection_type: e.target.value as any })}
+                className={inp}
+              >
+                <option value="usb">USB</option>
+                <option value="bluetooth">Bluetooth</option>
+                <option value="network">Network/WiFi</option>
+              </select>
+            </WField>
             <WField label="Paper Width">
               <select
                 value={hardwareForm?.receipt_paper_width ?? hwData?.config?.receipt_paper_width ?? "80mm"}
@@ -375,6 +386,16 @@ function Settings() {
               >
                 <option value="58mm">58mm</option>
                 <option value="80mm">80mm</option>
+              </select>
+            </WField>
+            <WField label="Printer Model">
+              <select
+                value={hardwareForm?.receipt_printer_model ?? hwData?.config?.receipt_printer_model ?? "POSIFLOW_CN811"}
+                onChange={e => setHardwareForm({ ...hardwareForm, receipt_printer_model: e.target.value })}
+                className={inp}
+                disabled
+              >
+                <option value="POSIFLOW_CN811">POSIFLOW CN811 (Thermal Receipt)</option>
               </select>
             </WField>
             <label className="flex items-center gap-2 text-sm">
@@ -403,6 +424,24 @@ function Settings() {
                 className="h-4 w-4 rounded border-border"
               />
               <span className="text-xs font-semibold text-muted-foreground">Print barcode on receipt</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={hardwareForm?.receipt_print_logo ?? hwData?.config?.receipt_print_logo ?? true}
+                onChange={e => setHardwareForm({ ...hardwareForm, receipt_print_logo: e.target.checked })}
+                className="h-4 w-4 rounded border-border"
+              />
+              <span className="text-xs font-semibold text-muted-foreground">Print store logo</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={hardwareForm?.receipt_print_gst_breakdown ?? hwData?.config?.receipt_print_gst_breakdown ?? true}
+                onChange={e => setHardwareForm({ ...hardwareForm, receipt_print_gst_breakdown: e.target.checked })}
+                className="h-4 w-4 rounded border-border"
+              />
+              <span className="text-xs font-semibold text-muted-foreground">Print GST breakdown (CGST/SGST)</span>
             </label>
             <button
               onClick={async () => {

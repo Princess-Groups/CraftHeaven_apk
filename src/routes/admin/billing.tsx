@@ -595,6 +595,9 @@ function Billing() {
           tax: Number(order.tax ?? 0),
           shippingCharge: Number(order.shipping_charges ?? 0),
           grandTotal: Number(order.total ?? 0),
+          cgstAmount: Number(order.cgst_amount ?? 0),
+          sgstAmount: Number(order.sgst_amount ?? 0),
+          igstAmount: Number(order.igst_amount ?? 0),
         },
         paymentMethod: order.payment_method as "CASH" | "UPI" | "CARD" | "COD",
         footerLines: [
@@ -606,6 +609,8 @@ function Billing() {
           openCashDrawer: cfg?.receipt_open_cash_drawer ?? (payment === "CASH"),
           printBarcode: cfg?.receipt_print_barcode ?? false,
           barcodeData: orderId.slice(0, 8).toUpperCase(),
+          printLogo: cfg?.receipt_print_logo ?? true,
+          printGstBreakdown: cfg?.receipt_print_gst_breakdown ?? true,
         },
       };
 
@@ -630,7 +635,13 @@ function Billing() {
     searchRef.current?.focus();
   }
 
-  if (invoice) return <Invoice orderId={invoice.id} at={invoice.at} onDone={reset} auto={invoice.auto} />;
+  const handlePrintReceipt = useCallback(() => {
+    if (invoice) {
+      printReceiptViaAgent(invoice.id, invoice.at);
+    }
+  }, [invoice, printReceiptViaAgent]);
+
+  if (invoice) return <Invoice orderId={invoice.id} at={invoice.at} onDone={reset} auto={invoice.auto} selectedPrinterId={selectedPrinterId} onPrintReceipt={handlePrintReceipt} />;
 
   // ---- SPECIAL BILLING MODE ----
   if (billingMode === "special") {
@@ -1571,11 +1582,15 @@ function Invoice({
   at,
   onDone,
   auto,
+  selectedPrinterId,
+  onPrintReceipt,
 }: {
   orderId: string;
   at: string;
   onDone: () => void;
   auto?: boolean;
+  selectedPrinterId?: string;
+  onPrintReceipt?: () => Promise<void>;
 }) {
   const { data } = useQuery({
     queryKey: ["invoice", orderId],
@@ -1615,12 +1630,23 @@ function Invoice({
         <button onClick={onDone} className="flex items-center gap-1 text-xs text-muted-foreground">
           <X className="h-4 w-4" /> New Sale
         </button>
-        <button
-          onClick={() => window.print()}
-          className="flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white"
-        >
-          <Printer className="h-3.5 w-3.5" /> Print
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white"
+          >
+            <Printer className="h-3.5 w-3.5" /> Print (Browser)
+          </button>
+          {selectedPrinterId && onPrintReceipt && (
+            <button
+              onClick={onPrintReceipt}
+              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition"
+              title="Print directly to thermal receipt printer (POSIFLOW CN811)"
+            >
+              <Printer className="h-3.5 w-3.5" /> Print Bill
+            </button>
+          )}
+        </div>
       </div>
       <div className="print-area rounded-xl border border-border bg-white p-6 shadow-sm print:border-0 print:shadow-none">
         <div className="ind">
