@@ -801,12 +801,21 @@ function Dashboard() {
                   <div className="text-xs font-bold text-emerald-700">₹{(o.total || 0).toLocaleString("en-IN")}</div>
                 </div>
                 <div className="flex items-center justify-between mt-0.5">
-                  <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                    o.status === "delivered" ? "bg-emerald-50 text-emerald-700" :
-                    o.status === "cancelled" ? "bg-rose-50 text-rose-700" :
-                    o.status === "shipped" ? "bg-blue-50 text-blue-700" :
-                    "bg-amber-50 text-amber-700"
-                  }`}>{String(o.status || "new")}</span>
+                  <span
+                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                      o.status === "DELIVERED"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : o.status === "CANCELLED"
+                          ? "bg-rose-50 text-rose-700"
+                          : o.status === "PACKED" ||
+                              o.status === "OUT_FOR_DELIVERY" ||
+                              o.status === "PROCESSING"
+                            ? "bg-blue-50 text-blue-700"
+                            : "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {String(o.status || "NEW")}
+                  </span>
                   <span className="text-[10px] text-muted-foreground">{formatDate(o.created_at)}</span>
                 </div>
               </div>

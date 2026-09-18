@@ -93,16 +93,18 @@ function Users() {
       if (error) return toast.error(error.message);
       if (data.user) {
         // Create profile
-        await supabase.from("profiles").upsert({
+        const { error: profileError } = await supabase.from("profiles").upsert({
           id: data.user.id,
           full_name: newName.trim() || null,
           phone: newPhone.trim() || null,
         });
+        if (profileError) return toast.error(`Profile not created: ${profileError.message}`);
         // Grant role
-        await supabase.from("user_roles").insert({
+        const { error: roleError } = await supabase.from("user_roles").insert({
           user_id: data.user.id,
           role: newRole,
         });
+        if (roleError) return toast.error(`Role not granted: ${roleError.message}`);
         toast.success(`User created: ${newEmail}`);
         setShowAddForm(false);
         setNewEmail("");

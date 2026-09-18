@@ -34,6 +34,8 @@ function Slots() {
   const [form, setForm] = useState({
     name: "",
     slot_total_amount: 0,
+    slot_freight_charges: 0,
+    slot_other_charges: 0,
     total_slot_units: 0,
     notes: "",
   });
@@ -63,7 +65,14 @@ function Slots() {
   }, [search, slots]);
 
   function resetForm() {
-    setForm({ name: "", slot_total_amount: 0, total_slot_units: 0, notes: "" });
+    setForm({
+      name: "",
+      slot_total_amount: 0,
+      slot_freight_charges: 0,
+      slot_other_charges: 0,
+      total_slot_units: 0,
+      notes: "",
+    });
     setEditingId(null);
     setFormOpen(false);
   }
@@ -71,7 +80,10 @@ function Slots() {
   function startEdit(s: SlotRow) {
     setForm({
       name: s.name ?? "",
-      slot_total_amount: (s.packing_charges ?? 0) + (s.freight_charges ?? 0) + (s.other_charges ?? 0),
+      slot_total_amount:
+        (s.packing_charges ?? 0) + (s.freight_charges ?? 0) + (s.other_charges ?? 0),
+      slot_freight_charges: s.freight_charges ?? 0,
+      slot_other_charges: s.other_charges ?? 0,
       total_slot_units: s.total_quantity ?? 0,
       notes: s.notes ?? "",
     });
@@ -100,13 +112,17 @@ function Slots() {
     try {
       const totalAmount = Number(form.slot_total_amount) || 0;
       const totalUnits = Number(form.total_slot_units) || 0;
-      // Store total amount as total_charges (all charges combined)
+      const freightCharges = Number(form.slot_freight_charges) || 0;
+      const otherCharges = Number(form.slot_other_charges) || 0;
+      if (freightCharges + otherCharges > totalAmount)
+        return toast.error("Freight + other charges cannot exceed the slot total");
+      // Store total as total_charges and keep the breakdown across the charge columns
       const payload = {
         name: form.name.trim(),
         total_charges: totalAmount,
-        packing_charges: totalAmount, // Store total as packing (primary charge field)
-        freight_charges: 0,
-        other_charges: 0,
+        packing_charges: Math.max(0, totalAmount - freightCharges - otherCharges),
+        freight_charges: freightCharges,
+        other_charges: otherCharges,
         total_quantity: totalUnits,
         notes: form.notes.trim() || null,
         is_active: true,
@@ -224,6 +240,42 @@ function Slots() {
                   value={form.slot_total_amount || ""}
                   onChange={(e) => setForm({ ...form, slot_total_amount: Number(e.target.value) || 0 })}
                   placeholder="e.g. 3000"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
+                />
+              </div>
+
+              {/* Freight Charges */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  Freight Charges (₹)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.slot_freight_charges || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, slot_freight_charges: Number(e.target.value) || 0 })
+                  }
+                  placeholder="e.g. 500"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
+                />
+              </div>
+
+              {/* Other Charges */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  Other Charges (₹)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.slot_other_charges || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, slot_other_charges: Number(e.target.value) || 0 })
+                  }
+                  placeholder="e.g. 200"
                   className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
                 />
               </div>

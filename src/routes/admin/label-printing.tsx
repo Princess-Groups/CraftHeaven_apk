@@ -292,7 +292,7 @@ function LabelPrinting() {
         .eq("slot_id", selectedSlotId)
         .order("created_at", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
       return data as LabelBatch | null;
     },
     enabled: !!selectedSlotId,

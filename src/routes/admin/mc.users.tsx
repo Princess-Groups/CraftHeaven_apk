@@ -49,8 +49,14 @@ function MCUserManagement() {
       });
       if (error) return toast.error(error.message);
       if (data.user) {
-        await supabase.from("user_roles").insert({ user_id: data.user.id, role: newUser.role });
-        await supabase.from("profiles").insert({ id: data.user.id, full_name: newUser.full_name || newUser.email });
+        const { error: roleError } = await supabase
+          .from("user_roles")
+          .insert({ user_id: data.user.id, role: newUser.role });
+        if (roleError) return toast.error(`Role not granted: ${roleError.message}`);
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .insert({ id: data.user.id, full_name: newUser.full_name || newUser.email });
+        if (profileError) return toast.error(`Profile not created: ${profileError.message}`);
         toast.success("User created");
         setShowAdd(false);
         setNewUser({ email: "", password: "", full_name: "", role: "viewer" });

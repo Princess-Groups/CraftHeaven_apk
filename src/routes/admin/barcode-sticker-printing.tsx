@@ -102,6 +102,7 @@ type ProductRow = {
 };
 
 type BarcodeStickerItem = {
+  id: string;
   product_id: string;
   product_name: string;
   sku: string | null;
@@ -254,6 +255,7 @@ function BarcodeStickerPrinting() {
         const product = productMap.get(item.product_id);
         const slot = item.slot_number ? slotMap.get(item.slot_number) : null;
         return {
+          id: item.id,
           product_id: item.product_id,
           product_name: product?.name ?? "Unknown",
           sku: product?.sku ?? product?.barcode ?? null,
@@ -772,7 +774,7 @@ function BarcodeStickerPrinting() {
               <tbody>
                 {filteredItems.map((item, idx) => (
                   <tr
-                    key={item.product_id}
+                    key={item.id}
                     className={`border-t border-border transition ${
                       selectedItems.has(item.product_id) ? "bg-primary/5" : "hover:bg-secondary-soft/30"
                     }`}

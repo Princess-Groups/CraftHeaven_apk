@@ -109,7 +109,7 @@ function MasterProducts() {
       selling_price: Number(editing.selling_price) || 0,
       minimum_stock: Number(editing.minimum_stock) || 5,
       current_stock: Number(editing.current_stock) || 0,
-      available_stock: Number(editing.current_stock) || 0,
+      available_stock: editing.available_stock ?? (Number(editing.current_stock) || 0),
       supplier_name: editing.supplier_name || null,
       gst_rate: Number(editing.gst_rate) || 0,
       status: editing.status || "ACTIVE",

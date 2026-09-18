@@ -70,9 +70,14 @@ function MarketplaceIntegration() {
       status: "DISCONNECTED" as const,
     };
     if (existing) {
-      await supabase.from("mc_marketplace_connections").update(payload).eq("id", existing.id);
+      const { error } = await supabase
+        .from("mc_marketplace_connections")
+        .update(payload)
+        .eq("id", existing.id);
+      if (error) return toast.error(error.message);
     } else {
-      await supabase.from("mc_marketplace_connections").insert(payload);
+      const { error } = await supabase.from("mc_marketplace_connections").insert(payload);
+      if (error) return toast.error(error.message);
     }
     toast.success("Connection settings saved");
     setConfiguring(null);

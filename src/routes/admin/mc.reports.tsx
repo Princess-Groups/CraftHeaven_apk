@@ -31,8 +31,15 @@ function MCReports() {
   const { data: orders } = useQuery({
     queryKey: ["mc-report-orders", dateRange],
     queryFn: async () =>
-      (await supabase.from("mc_marketplace_orders").select("*, mc_marketplace_channels(channel)")
-        .gte("created_at", dateRange.from).lte("created_at", dateRange.to)).data ?? [],
+      (
+        await supabase
+          .from("mc_marketplace_orders")
+          .select(
+            "*, mc_marketplace_channels(channel), mc_marketplace_order_items(product_name,quantity,total)",
+          )
+          .gte("created_at", dateRange.from)
+          .lte("created_at", dateRange.to)
+      ).data ?? [],
   });
 
   const { data: inventory } = useQuery({

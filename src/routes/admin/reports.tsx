@@ -114,7 +114,6 @@ function ReportsAnalytics() {
 
   // Computed stats
   const stats = useMemo(() => {
-    const now = new Date();
     const o = orders ?? [];
     const p = purchases ?? [];
     const prods = (products ?? []) as any[];
@@ -169,39 +168,51 @@ function ReportsAnalytics() {
     });
     const categoryPerf = [...catPerf.values()].sort((a, b) => b.revenue - a.revenue);
 
-    // Daily sales for chart
-    const dailySales: Record<string, number> = {};
-    const days = period === "today" ? 1 : period === "week" ? 7 : 30;
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 864e5);
-      dailySales[d.toISOString().slice(0, 10)] = 0;
+    // Sales trend (daily buckets for short ranges, monthly for long custom ranges)
+    const trendData: { label: string; total: number }[] = [];
+    const trendTo = new Date(toIso).getTime();
+    const trendFrom = new Date(fromIso).getTime();
+    const rangeDays = Math.max(1, Math.floor((trendTo - trendFrom) / 864e5) + 1);
+    if (period === "custom" && rangeDays > 35) {
+      const monthlySales: Record<string, number> = {};
+      for (
+        let d = new Date(new Date(fromIso).getFullYear(), new Date(fromIso).getMonth(), 1);
+        d.getTime() <= trendTo;
+        d = new Date(d.getFullYear(), d.getMonth() + 1, 1)
+      ) {
+        monthlySales[d.toISOString().slice(0, 7)] = 0;
+      }
+      o.forEach((x) => {
+        const k = x.created_at.slice(0, 7);
+        if (k in monthlySales) monthlySales[k] += Number(x.total);
+      });
+      trendData.push(
+        ...Object.entries(monthlySales).map(([m, total]) => ({ label: m.slice(5), total })),
+      );
+    } else {
+      const days = period === "today" ? 1 : period === "week" ? 7 : Math.min(35, rangeDays);
+      const dailySales: Record<string, number> = {};
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(trendTo - i * 864e5);
+        dailySales[d.toISOString().slice(0, 10)] = 0;
+      }
+      o.forEach((x) => {
+        const k = x.created_at.slice(0, 10);
+        if (k in dailySales) dailySales[k] += Number(x.total);
+      });
+      trendData.push(
+        ...Object.entries(dailySales).map(([date, total]) => ({ label: date.slice(5), total })),
+      );
     }
-    o.forEach((x) => {
-      const k = x.created_at.slice(0, 10);
-      if (k in dailySales) dailySales[k] += Number(x.total);
-    });
-    const dailyData = Object.entries(dailySales).map(([date, total]) => ({ date: date.slice(5), total }));
-
-    // Monthly sales for chart
-    const monthlySales: Record<string, number> = {};
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      monthlySales[d.toISOString().slice(0, 7)] = 0;
-    }
-    o.forEach((x) => {
-      const k = x.created_at.slice(0, 7);
-      if (k in monthlySales) monthlySales[k] += Number(x.total);
-    });
-    const monthlyData = Object.entries(monthlySales).map(([m, total]) => ({ month: m.slice(5), total }));
 
     return {
       totalSales, onlineSales, offlineSales, totalPurchases, profit,
       orderCount, delivered, cancelled, pending,
       totalProducts, inStock, lowStock, outOfStock,
       paymentMethods, topProducts, categoryPerf,
-      dailyData, monthlyData,
+      trendData,
     };
-  }, [orders, purchases, products, categories]);
+  }, [orders, purchases, products, categories, period, fromIso, toIso]);
 
   function exportSummary() {
     const rows = [
@@ -322,9 +333,9 @@ function ReportsAnalytics() {
               <div className="mb-3 text-sm font-semibold">Sales Trend</div>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={stats.dailyData}>
+                  <LineChart data={stats.trendData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#EEF2E9" />
-                    <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip formatter={(v: number) => fmt(v)} />
                     <Line type="monotone" dataKey="total" stroke="#285A48" strokeWidth={2} dot={false} />

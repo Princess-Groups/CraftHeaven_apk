@@ -30,6 +30,7 @@ function Inventory() {
   const [searchQ, setSearchQ] = useState("");
   const [editingReorder, setEditingReorder] = useState<string | null>(null);
   const [reorderVal, setReorderVal] = useState("");
+  const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({});
 
   const { data: products } = useQuery({
     queryKey: ["inv"],
@@ -498,10 +499,22 @@ function Inventory() {
                             type="number"
                             step="0.001"
                             min={0}
-                            defaultValue={p.stock}
+                            value={stockDrafts[p.id] ?? String(p.stock)}
+                            onChange={(e) =>
+                              setStockDrafts((d) => ({ ...d, [p.id]: e.target.value }))
+                            }
                             className="w-24 rounded border border-border px-2 py-1 text-xs text-right"
                             onBlur={(e) => {
-                              const v = Number(e.target.value);
+                              const raw = e.target.value.trim();
+                              if (raw === "") {
+                                setStockDrafts((d) => ({ ...d, [p.id]: String(p.stock) }));
+                                return;
+                              }
+                              const v = Number(raw);
+                              if (!Number.isFinite(v) || v < 0) {
+                                setStockDrafts((d) => ({ ...d, [p.id]: String(p.stock) }));
+                                return;
+                              }
                               if (v !== p.stock) adjust(p.id, v, p);
                             }}
                           />
