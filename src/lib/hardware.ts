@@ -76,28 +76,11 @@ async function loadConfig(): Promise<HardwareConfig | null> {
  * Also fetches available printers from Print Agent for dropdowns.
  */
 export const getHardwareConfig = createServerFn({ method: "GET" }).handler(async () => {
+  // This code runs on Vercel in production. A printer agent runs on the
+  // operator's computer, so only the browser can discover it via localhost.
+  // The server function is intentionally limited to persisted configuration.
   const cfg = await loadConfig();
-
-  // Fetch available printers from Print Agent
-  let printers: PrinterInfo[] = [];
-  try {
-    const PRINT_AGENT_BASE = process.env.PRINT_AGENT_URL || "http://localhost:3030";
-    const response = await fetch(`${PRINT_AGENT_BASE}/printers`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (response.ok) {
-      const data = await response.json();
-      printers = data.printers || [];
-    }
-  } catch {
-    // Print Agent not running - will use empty array
-  }
-
-  return {
-    config: cfg,
-    printers,
-  };
+  return { config: cfg, printers: [] as PrinterInfo[] };
 });
 
 /**

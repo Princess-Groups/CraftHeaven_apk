@@ -97,7 +97,11 @@ function CategoriesPage() {
                   params={{ slug: c.slug }}
                   className="group relative overflow-hidden rounded-2xl shadow-card"
                 >
-                  <img src={c.image_url ?? ""} alt={c.name} className="aspect-[4/5] w-full object-cover transition duration-500 group-hover:scale-105" />
+                  <img
+                    src={c.image_url || undefined}
+                    alt={c.name}
+                    className="aspect-[4/5] w-full object-cover transition duration-500 group-hover:scale-105"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#8FAF94]/70 via-[#DCE8DA]/30 to-transparent" />
                   <div className="absolute inset-x-2 bottom-2 rounded-xl bg-[#DCE8DA] px-3 py-1.5">
                     <div className="text-sm font-semibold text-foreground">{c.name}</div>
@@ -115,7 +119,11 @@ function CategoriesPage() {
               {products.map((p) => (
                 <Link key={p.id} to="/product/$slug" params={{ slug: p.slug }} className="overflow-hidden rounded-2xl bg-card shadow-card">
                   <div className="aspect-square overflow-hidden bg-primary-soft">
-                    <img src={p.image_urls[0]} alt={p.name} className="h-full w-full object-cover" />
+                    <img
+                      src={p.image_urls[0] || undefined}
+                      alt={p.name}
+                      className="h-full w-full object-cover"
+                    />
                   </div>
                   <div className="p-2.5">
                     <div className="line-clamp-2 text-xs font-medium">{p.name}</div>

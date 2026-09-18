@@ -1998,7 +1998,9 @@ function Purchases() {
         unit_cost: Number(r.unit_price) || 0,
         selling_price: Number(r.retail_selling_price) || 0,
         quantity: Math.round(Number(r.quantity) || 1),
+        unit: r.per_packet_unit || "Nos",
         slot_number: r.slot_id || null,
+        slot_charge_per_product: Number(r.slot_charge_per_product) || 0,
         color_variations: (r.color_variants || []).map((v) => ({
           color: v.color_name || v.color_code || "",
           color_code: v.color_code || "",
@@ -2595,6 +2597,27 @@ function Purchases() {
               />
               <div className="text-[10px] text-primary font-semibold text-right">
                 = {Number(row.quantity) || 0} × ₹{(Number(row.purchase_packing_freight_charge) || 0).toFixed(2)}
+              </div>
+            </div>
+          );
+        }
+        // Quantity becomes auto-derived (read-only) when colour variants are present
+        if (field === "quantity" && (row.color_variants?.length ?? 0) > 0) {
+          const sumQty = (row.color_variants ?? []).reduce(
+            (s, v) => s + (Number(v.quantity) || 0),
+            0,
+          );
+          return (
+            <div className="space-y-1">
+              <input
+                type="number"
+                value={String(sumQty || "")}
+                readOnly
+                className="w-full rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-right outline-none cursor-default"
+                step="0.01"
+              />
+              <div className="text-[10px] text-primary font-semibold text-right">
+                = Σ colour variant quantities
               </div>
             </div>
           );

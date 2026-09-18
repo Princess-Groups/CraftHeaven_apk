@@ -108,7 +108,7 @@ function ProductPage() {
         <div>
           <div className="overflow-hidden rounded-3xl bg-primary-soft">
             <img
-              src={product.image_urls[imgIdx]}
+              src={product.image_urls[imgIdx] || undefined}
               alt={product.name}
               className="aspect-square w-full object-cover"
             />
@@ -206,7 +206,11 @@ function ProductPage() {
                       }}
                       className={`h-12 w-12 overflow-hidden rounded-xl border-2 ${variationIdx === i ? "border-primary" : "border-transparent"}`}
                     >
-                      <img src={v.image_url} alt="" className="h-full w-full object-cover" />
+                      <img
+                        src={v.image_url || undefined}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
                     </button>
                   ))}
                 </div>

@@ -195,7 +195,11 @@ function Home() {
                 params={{ slug: c.slug }}
                 className="group relative overflow-hidden rounded-2xl shadow-card"
               >
-                <img src={c.image_url ?? ""} alt={c.name} className="aspect-[5/4] w-full object-cover transition duration-500 group-hover:scale-105" />
+                <img
+                  src={c.image_url || undefined}
+                  alt={c.name}
+                  className="aspect-[5/4] w-full object-cover transition duration-500 group-hover:scale-105"
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#8FAF94]/70 via-[#DCE8DA]/30 to-transparent" />
                 <div className="absolute inset-x-2 bottom-2 rounded-xl bg-[#DCE8DA] px-3 py-1.5">
                   <div className="text-[13px] font-semibold text-foreground">{c.name}</div>

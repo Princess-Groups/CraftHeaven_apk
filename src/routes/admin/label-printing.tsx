@@ -564,9 +564,9 @@ function LabelPrinting() {
           <Tags className="h-5 w-5 text-primary" />
           Label Printing
         </h1>
-        {/* Printer Status Indicator */}
-        {selectedPrinterId && (
-          <div className="ml-auto flex items-center gap-2">
+        {/* Printer Settings must remain available even when the local agent is offline. */}
+        <div className="ml-auto flex items-center gap-2">
+          {selectedPrinterId ? (
             <div className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 shadow-sm">
               <Printer className="h-4 w-4 text-muted-foreground" />
               <select
@@ -577,30 +577,20 @@ function LabelPrinting() {
                 }}
                 className="bg-transparent text-sm outline-none"
               >
-                {printers.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.status})
-                  </option>
-                ))}
+                {printers.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status})</option>)}
               </select>
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  printerStatus[selectedPrinterId] === "connected" ? "bg-emerald-500" :
-                  printerStatus[selectedPrinterId] === "error" ? "bg-red-500" :
-                  "bg-amber-500"
-                }`}
-                title={printerStatus[selectedPrinterId] || "Unknown"}
-              />
             </div>
-            <button
-              onClick={() => setShowPrinterSettings(!showPrinterSettings)}
-              className="rounded-lg p-2 border border-border bg-white hover:bg-secondary-soft transition"
-              title="Printer Settings"
-            >
-              <Settings className="h-4 w-4 text-muted-foreground" />
-            </button>
-          </div>
-        )}
+          ) : (
+            <span className="hidden text-xs text-muted-foreground sm:inline">Printer not connected</span>
+          )}
+          <button
+            onClick={() => setShowPrinterSettings(!showPrinterSettings)}
+            className="rounded-lg p-2 border border-border bg-white hover:bg-secondary-soft transition"
+            title="Printer Settings"
+          >
+            <Settings className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Slot Selection */}

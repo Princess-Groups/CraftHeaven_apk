@@ -156,13 +156,10 @@ export async function getPrinters(): Promise<PrinterInfo[]> {
 
     const data = await response.json();
     return data.printers || [];
-  } catch (error) {
-    console.error("Error fetching printers:", error);
-    // Return mock data for development if Print Agent not running
-    if (import.meta.env.DEV) {
-      return getMockPrinters();
-    }
-    throw error;
+  } catch {
+    // The agent is installed on the computer connected to the printer. It is
+    // expected to be unavailable on devices that do not have that agent.
+    return [];
   }
 }
 
@@ -179,9 +176,8 @@ export async function getPrinterStatus(printerId: string): Promise<PrinterStatus
     }
 
     return await response.json();
-  } catch (error) {
-    console.error("Error getting printer status:", error);
-    return { printerId, status: "error", error: String(error) };
+  } catch {
+    return { printerId, status: "error", error: "Print Agent is unavailable" };
   }
 }
 
