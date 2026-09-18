@@ -3,9 +3,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Search, Plus, Minus, Trash2, ScanBarcode, Printer, X, Users, FileText, Percent } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ScanBarcode, Printer, X, Users, FileText, Percent, Info, Usb, Bluetooth, CheckCircle2, AlertCircle, Settings, Wifi, WifiOff, Maximize2, Eye, Loader2, RefreshCw } from "lucide-react";
 import { COMPANY, TAX_INVOICE, AUTO_PRINT_POS, PRINT_CSS } from "@/lib/company";
 import { autoAssignGst, splitCgstSgst, GST_RATES, GST_RATE_LABELS, calcGstAmount } from "@/lib/gst-config";
+import {
+  getPrinters,
+  getPrinterStatus,
+  printReceipt,
+  printTestLabel,
+  generateLabelPreview,
+  openLabelPreview,
+  type PrinterInfo,
+  type ReceiptPrintJob,
+} from "@/lib/print-service";
+import {
+  getHardwareConfig,
+  type HardwareConfig,
+} from "@/lib/hardware";
 const logoUrl = COMPANY.logo;
 
 export const Route = createFileRoute("/admin/billing")({
@@ -77,6 +91,26 @@ function Billing() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // Barcode scanner state
+  const [scannerStatus, setScannerStatus] = useState<"idle" | "scanning" | "found" | "not-found">("idle");
+  const [lastScannedBarcode, setLastScannedBarcode] = useState<string>("");
+  const [scannerError, setScannerError] = useState<string>("");
+  const [showScannerHelp, setShowScannerHelp] = useState(false);
+
+  // Printer state
+  const [selectedPrinterId, setSelectedPrinterId] = useState<string>("");
+  const [printers, setPrinters] = useState<PrinterInfo[]>([]);
+  const [printerLoading, setPrinterLoading] = useState(false);
+  const [printerStatus, setPrinterStatus] = useState<Record<string, "connected" | "disconnected" | "error" | "unknown">>({});
+  const [showPrinterSettings, setShowPrinterSettings] = useState(false);
+
+  // Hardware config from database
+  const { data: hwData, refetch: refetchHardware } = useQuery({
+    queryKey: ["hardware-config"],
+    queryFn: () => getHardwareConfig(),
+    refetchOnWindowFocus: false,
+  });
+
   // Special Billing state
   const [billingMode, setBillingMode] = useState<"normal" | "special">("normal");
   const [specialClient, setSpecialClient] = useState<SpecialBillingClient>({ name: "", contact: "", address: "" });
@@ -105,7 +139,7 @@ function Billing() {
   }
 
   // Search products by barcode or name
-  const { data: searchResults } = useQuery({
+  const { data: searchResults, isLoading: searchLoading } = useQuery({
     queryKey: ["billing-search", searchQuery, searchType],
     queryFn: async () => {
       if (!searchQuery.trim()) return [];
@@ -160,6 +194,32 @@ function Billing() {
     searchRef.current?.focus();
     toast.success(`Added: ${p.name}`);
   }, []);
+
+  // Handle barcode scan result - add product to bill or show error
+  useEffect(() => {
+    if (searchType !== "barcode" || searchQuery.trim().length < 3) return;
+    if (searchLoading) return;
+
+    if (searchResults && searchResults.length === 1) {
+      // Single product found - add it
+      addProduct(searchResults[0]);
+      setScannerStatus("found");
+      setScannerError("");
+      // Clear after showing success briefly
+      setTimeout(() => setScannerStatus("idle"), 1500);
+    } else if (searchResults && searchResults.length > 1) {
+      // Multiple matches - show suggestions
+      setShowSuggestions(true);
+      setScannerStatus("found");
+      setScannerError("");
+    } else {
+      // No product found
+      setScannerStatus("not-found");
+      setScannerError(`Product not found for barcode: "${searchQuery.trim()}"`);
+      toast.error(`Product not found: "${searchQuery.trim()}"`);
+      setTimeout(() => setScannerStatus("idle"), 3000);
+    }
+  }, [searchResults, searchLoading, searchType, searchQuery, addProduct]);
 
   // Categories query for GST auto-assignment
   const { data: categories } = useQuery({
@@ -293,26 +353,116 @@ function Billing() {
   useEffect(() => {
     let buf = "";
     let timer: ReturnType<typeof setTimeout> | undefined;
-    function onKey(e: KeyboardEvent) {
-      if ((e.target as HTMLElement)?.tagName === "INPUT") return;
+    let isComposing = false;
+
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      // Don't intercept if user is typing in an input/textarea
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+
+      // Handle composition events (IME input)
+      if (e.key === "Process" || e.key === "CompositionStart") {
+        isComposing = true;
+        return;
+      }
+      if (e.key === "CompositionEnd") {
+        isComposing = false;
+        return;
+      }
+      if (isComposing) return;
+
+      // Enter key = potential end of barcode
       if (e.key === "Enter") {
         if (buf.length >= 3) {
           e.preventDefault();
-          setSearchQuery(buf);
+          const barcode = buf.trim();
+          setSearchQuery(barcode);
           setSearchType("barcode");
+          setLastScannedBarcode(barcode);
+          setScannerStatus("scanning");
+
+          // The search will happen automatically via the query
+          // We'll handle the result in a separate effect
         }
         buf = "";
         if (timer) clearTimeout(timer);
         return;
       }
-      if (e.key.length === 1) {
+
+      // Accumulate printable characters (single key presses)
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         buf += e.key;
         if (timer) clearTimeout(timer);
-        timer = setTimeout(() => (buf = ""), 80);
+        // 80ms timeout - if no key for 80ms, assume it's manual typing, not a scanner
+        timer = setTimeout(() => {
+          buf = "";
+        }, 80);
       }
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+
+    function onKeyUp(e: KeyboardEvent) {
+      // We only use keydown for barcode detection
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
+  // Load printers on mount and when hardware config changes
+  useEffect(() => {
+    loadPrinters();
+  }, []);
+
+  // Initialize receipt printer from hardware config when it loads
+  useEffect(() => {
+    if (hwData?.config) {
+      const cfg = hwData.config;
+      // Auto-select receipt printer from hardware config
+      if (cfg.receipt_printer_id && !selectedPrinterId) {
+        setSelectedPrinterId(cfg.receipt_printer_id);
+      }
+    }
+  }, [hwData?.config, selectedPrinterId]);
+
+  const loadPrinters = useCallback(async () => {
+    setPrinterLoading(true);
+    try {
+      // Use printers from hardware config (fetched server-side from Print Agent)
+      if (hwData?.printers?.length) {
+        setPrinters(hwData.printers);
+        // Auto-select default printer if none selected
+        const defaultPrinter = hwData.printers.find(p => p.isDefault) || hwData.printers[0];
+        if (defaultPrinter && !selectedPrinterId) {
+          setSelectedPrinterId(defaultPrinter.id);
+          checkPrinterStatus(defaultPrinter.id);
+        }
+      } else {
+        // Fallback to client-side fetch
+        const printerList = await getPrinters();
+        setPrinters(printerList);
+        const defaultPrinter = printerList.find(p => p.isDefault) || printerList[0];
+        if (defaultPrinter && !selectedPrinterId) {
+          setSelectedPrinterId(defaultPrinter.id);
+          checkPrinterStatus(defaultPrinter.id);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load printers:", error);
+    } finally {
+      setPrinterLoading(false);
+    }
+  }, [hwData?.printers, selectedPrinterId]);
+
+  const checkPrinterStatus = useCallback(async (printerId: string) => {
+    try {
+      const status = await getPrinterStatus(printerId);
+      setPrinterStatus(prev => ({ ...prev, [printerId]: status.status }));
+    } catch (error) {
+      setPrinterStatus(prev => ({ ...prev, [printerId]: "error" }));
+    }
   }, []);
 
   const subtotal = useMemo(
@@ -382,10 +532,94 @@ function Billing() {
       _discount: discount,
     });
     if (error) return toast.error(error.message);
-    setInvoice({ id: data as string, at: new Date().toISOString(), auto: AUTO_PRINT_POS });
+
+    const invoiceId = data as string;
+    const invoiceDate = new Date().toISOString();
+    setInvoice({ id: invoiceId, at: invoiceDate, auto: AUTO_PRINT_POS });
     toast.success("Sale completed");
     qc.invalidateQueries();
+
+    // Print receipt via Print Agent if printer is selected
+    if (selectedPrinterId && printers.find(p => p.id === selectedPrinterId)?.status === "connected") {
+      printReceiptViaAgent(invoiceId, invoiceDate);
+    }
   }
+
+  // Print receipt via Print Agent
+  const printReceiptViaAgent = useCallback(async (orderId: string, invoiceDate: string) => {
+    if (!selectedPrinterId) return;
+
+    try {
+      // Get hardware config for receipt options
+      const cfg = hwData?.config;
+
+      // Fetch order details
+      const { data: order } = await supabase.from("orders").select("*").eq("id", orderId).single();
+      const { data: orderItems } = await supabase
+        .from("order_items")
+        .select("*, products(hsn_code)")
+        .eq("order_id", orderId);
+
+      if (!order) throw new Error("Order not found");
+
+      // Build receipt items
+      const receiptItems = (orderItems ?? []).map((it: any) => ({
+        name: it.product_name,
+        variation: it.variation || undefined,
+        quantity: Number(it.quantity),
+        unit: it.unit ?? "Nos",
+        unitPrice: Number(it.unit_price),
+        lineTotal: Number(it.line_total),
+        gstRate: Number(it.cgst_rate ?? 0) + Number(it.sgst_rate ?? 0),
+        hsnCode: it.products?.hsn_code,
+      }));
+
+      const printJob: ReceiptPrintJob = {
+        printerId: selectedPrinterId,
+        invoiceNumber: orderId.slice(0, 8).toUpperCase(),
+        invoiceDate,
+        storeInfo: {
+          name: COMPANY.name,
+          tagline: COMPANY.tagline,
+          gstin: COMPANY.gstin,
+          address: [COMPANY.addressLine1, COMPANY.addressLine2, COMPANY.addressLine3].filter(Boolean),
+          phone: COMPANY.phone,
+          email: COMPANY.email,
+          website: COMPANY.website,
+          cin: COMPANY.cin,
+        },
+        items: receiptItems,
+        totals: {
+          subtotal: Number(order.subtotal ?? 0),
+          discount: Number(order.discount ?? 0),
+          tax: Number(order.tax ?? 0),
+          shippingCharge: Number(order.shipping_charges ?? 0),
+          grandTotal: Number(order.total ?? 0),
+        },
+        paymentMethod: order.payment_method as "CASH" | "UPI" | "CARD" | "COD",
+        footerLines: [
+          "Thank you for shopping with us!",
+          "Goods once sold will not be taken back or exchanged."
+        ],
+        options: {
+          cutPaper: cfg?.receipt_auto_cut ?? true,
+          openCashDrawer: cfg?.receipt_open_cash_drawer ?? (payment === "CASH"),
+          printBarcode: cfg?.receipt_print_barcode ?? false,
+          barcodeData: orderId.slice(0, 8).toUpperCase(),
+        },
+      };
+
+      const result = await printReceipt(printJob);
+      if (result.status === "completed") {
+        toast.success("Receipt printed");
+      } else {
+        toast.warning("Print job queued");
+      }
+    } catch (error) {
+      console.error("Print receipt error:", error);
+      toast.error("Failed to print receipt");
+    }
+  }, [selectedPrinterId, payment, hwData?.config]);
 
   function reset() {
     setLines([]);
@@ -670,7 +904,8 @@ function Billing() {
 
   // ---- NORMAL BILLING MODE ----
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+    <>
+      <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
       {/* Left: Search + product display */}
       <div className="space-y-4">
         {/* Mode Selector */}
@@ -731,6 +966,67 @@ function Billing() {
             </button>
           </div>
         </form>
+
+        {/* Scanner Status & Help Section */}
+        <div className="rounded-xl border border-border bg-white p-3 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ScanBarcode className="h-4 w-4 text-secondary" />
+              <span className="text-sm font-semibold text-foreground">Barcode Scanner</span>
+            </div>
+            <button
+              onClick={() => setShowScannerHelp(!showScannerHelp)}
+              className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-secondary-soft transition"
+            >
+              <Info className="h-3.5 w-3.5" />
+              {showScannerHelp ? "Hide Help" : "Show Help"}
+            </button>
+          </div>
+
+          {/* Scanner Status Indicator */}
+          <div className="mt-2 flex items-center gap-2 text-xs">
+            <span className={`flex h-2 w-2 rounded-full ${scannerStatus === "found" ? "bg-emerald-500" : scannerStatus === "not-found" ? "bg-rose-500" : scannerStatus === "scanning" ? "bg-amber-500 animate-pulse" : "bg-muted-foreground/30"}`} />
+            <span className="text-muted-foreground">
+              {scannerStatus === "found" && `Product found: ${lastScannedBarcode}`}
+              {scannerStatus === "not-found" && `Not found: ${lastScannedBarcode}`}
+              {scannerStatus === "scanning" && "Scanning..."}
+              {scannerStatus === "idle" && "Ready — scan a barcode or type to search"}
+            </span>
+            {scannerError && (
+              <span className="ml-auto text-rose-600 font-medium">{scannerError}</span>
+            )}
+          </div>
+
+          {/* Scanner Help Panel */}
+          {showScannerHelp && (
+            <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border/50 space-y-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Usb className="h-3.5 w-3.5" />
+                <span><strong>USB Scanners:</strong> Plug in — works instantly as a keyboard. No driver needed.</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Bluetooth className="h-3.5 w-3.5" />
+                <span><strong>Bluetooth Scanners:</strong> Pair with Windows, set to "HID/Keyboard mode". Scans appear as keystrokes.</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                <span><strong>Auto-detection:</strong> Fast keystrokes ({'<' }80ms gap) + Enter key = barcode scan. Normal typing is ignored.</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+                <span><strong>Requirements:</strong> Scanner must send <kbd className="px-1 py-0.5 bg-white/50 rounded text-[9px] font-mono">Enter</kbd> after barcode. Configure via scanner manual.</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Search className="h-3.5 w-3.5" />
+                <span><strong>Fallback:</strong> Use the search box above to manually type barcode or product name anytime.</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Info className="h-3.5 w-3.5" />
+                <span><strong>Supported formats:</strong> EAN-13, UPC-A, Code 128, Code 39, QR (if scanner outputs text). Matches <code>products.barcode</code> or <code>products.sku</code>.</span>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Search results / suggestions */}
         {showSuggestions && searchResults && searchResults.length > 0 && (
@@ -1077,6 +1373,63 @@ function Billing() {
               </div>
             </div>
 
+            {/* Printer Selection */}
+            {printers.length > 0 && (
+              <div className="rounded-lg border border-border bg-white p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Receipt Printer</span>
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      printerStatus[selectedPrinterId] === "connected" ? "bg-emerald-500" :
+                      printerStatus[selectedPrinterId] === "error" ? "bg-red-500" :
+                      "bg-amber-500"
+                    }`}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Printer className="h-4 w-4 text-muted-foreground" />
+                  <select
+                    value={selectedPrinterId}
+                    onChange={(e) => {
+                      setSelectedPrinterId(e.target.value);
+                      checkPrinterStatus(e.target.value);
+                    }}
+                    disabled={printerLoading}
+                    className="flex-1 rounded-lg border border-border bg-white px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  >
+                    {printers.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.status === "connected" ? "✓" : p.status === "error" ? "✗" : "○"}
+                      </option>
+                    ))}
+                  </select>
+                  {printerLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowPrinterSettings(!showPrinterSettings)}
+                    className="flex-1 rounded-lg border border-border bg-white px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
+                  >
+                    <Settings className="h-3.5 w-3.5 inline mr-1" /> Settings
+                  </button>
+                  {selectedPrinterId && (
+                    <button
+                      onClick={() => {
+                        const cfg = hwData?.config;
+                        const width = cfg?.label_width_mm ?? 40;
+                        const height = cfg?.label_height_mm ?? 30;
+                        printTestLabel(selectedPrinterId, width, height).then(() => toast.success("Test label sent")).catch(e => toast.error(e.message));
+                      }}
+                      disabled={printerLoading}
+                      className="flex-1 rounded-lg border border-border bg-white px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition disabled:opacity-50"
+                    >
+                      <Wifi className="h-3.5 w-3.5 inline mr-1" /> Test
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Charge button */}
             <button
               onClick={placeSale}
@@ -1089,7 +1442,127 @@ function Billing() {
         )}
       </aside>
     </div>
-  );
+
+    {/* Printer Settings Panel Modal */}
+    {showPrinterSettings && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="w-full max-w-md rounded-xl bg-white shadow-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-foreground">Printer Settings</h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => refetchHardware()}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft"
+                title="Refresh from Hardware Settings"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => setShowPrinterSettings(false)}
+                className="rounded p-1 hover:bg-muted transition"
+              >
+                <X className="h-5 w-5 text-muted-foreground" />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-2">
+                Select Printer
+              </label>
+              {printerLoading ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">Loading printers...</span>
+                </div>
+              ) : printers.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border bg-white/50 py-8 text-center">
+                  <WifiOff className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No printers found</p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">
+                    Ensure the Print Agent is running on localhost:3030
+                  </p>
+                  <button
+                    onClick={loadPrinters}
+                    className="mt-3 text-xs font-semibold text-primary hover:underline"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              ) : (
+                <select
+                  value={selectedPrinterId}
+                  onChange={(e) => {
+                    setSelectedPrinterId(e.target.value);
+                    checkPrinterStatus(e.target.value);
+                  }}
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                >
+                  {printers.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.type}) - {p.status}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {selectedPrinterId && (
+              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-foreground">Status</span>
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      printerStatus[selectedPrinterId] === "connected" ? "bg-emerald-50 text-emerald-700" :
+                      printerStatus[selectedPrinterId] === "error" ? "bg-red-50 text-red-700" :
+                      "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      printerStatus[selectedPrinterId] === "connected" ? "bg-emerald-500" :
+                      printerStatus[selectedPrinterId] === "error" ? "bg-red-500" :
+                      "bg-amber-500"
+                    }`} />
+                    {printerStatus[selectedPrinterId] || "Unknown"}
+                  </span>
+                </div>
+                <button
+                  onClick={() => checkPrinterStatus(selectedPrinterId)}
+                  className="text-xs font-semibold text-primary hover:underline w-full"
+                >
+                  Refresh Status
+                </button>
+                <button
+                  onClick={() => {
+                    const cfg = hwData?.config;
+                    const width = cfg?.label_width_mm ?? 40;
+                    const height = cfg?.label_height_mm ?? 30;
+                    printTestLabel(selectedPrinterId, width, height).then(() => toast.success("Test label sent")).catch(e => toast.error(e.message));
+                  }}
+                  disabled={printerLoading}
+                  className="flex items-center gap-2 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-secondary-soft transition disabled:opacity-50"
+                >
+                  <Wifi className="h-4 w-4" />
+                  Print Test Label
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 flex justify-end gap-2">
+            <button
+              onClick={() => setShowPrinterSettings(false)}
+              className="rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-secondary-soft transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
+);
 }
 
 // ---------- Invoice component (same as POS) ----------

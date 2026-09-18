@@ -1,0 +1,45 @@
+{
+  "name": "ach-print-agent",
+  "version": "1.0.0",
+  "description": "Local Print Agent for ACH Billing - handles thermal receipt printing via ESC/POS and Windows printers",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc && pkg -t node20-win-x64 -o dist/ach-print-agent.exe package.json",
+    "build:simple": "tsc",
+    "start": "node dist/index.js",
+    "install-service": "node dist/windows/install-service.js",
+    "uninstall-service": "node dist/windows/uninstall-service.js"
+  },
+  "dependencies": {
+    "escpos": "^3.0.0-alpha.6",
+    "escpos-usb": "^3.0.0-alpha.6",
+    "express": "^4.19.2",
+    "ws": "^8.17.0",
+    "serialport": "^12.0.0",
+    "better-sqlite3": "^9.4.3",
+    "zod": "^3.23.8",
+    "cors": "^2.8.5",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "@types/express": "^4.17.21",
+    "@types/ws": "^8.5.10",
+    "@types/cors": "^2.8.17",
+    "@types/uuid": "^9.0.8",
+    "@types/better-sqlite3": "^7.6.10",
+    "typescript": "^5.4.5",
+    "tsx": "^4.11.0",
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "assets": [
+      "src/config/*.json"
+    ],
+    "targets": [
+      "node20-win-x64"
+    ],
+    "outputPath": "dist"
+  }
+}
