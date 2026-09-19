@@ -142,9 +142,9 @@ function BarcodeStickerPrinting() {
   const storeName = "ATHIRA'S CREATIVE HAVEN";
   const storeAddress = "Chennai, TN - 600018";
 
-  useEffect(() => {
-    loadPrinters();
-  }, []);
+  // Printers are loaded ONLY when the user clicks Refresh (the localhost Print
+  // Agent is often not running, so probing it on page load would log
+  // "net::ERR_CONNECTION_REFUSED" to the console on every visit).
 
   useEffect(() => {
     if (hwData?.config) {

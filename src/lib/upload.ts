@@ -3,15 +3,16 @@ import { supabase } from "@/integrations/supabase/client";
 const BUCKET_NAME = "product-images";
 
 /**
- * Verifies the storage bucket exists (created via SQL migration)
+ * Verifies the storage bucket exists (created via SQL migration).
+ *
+ * The bucket is provisioned in the database migration, so we skip the
+ * listBuckets() network probe entirely. That probe previously caused noisy
+ * console errors (403 "exp claim timestamp check failed") whenever the browser
+ * session token was stale — the object image_urls column already requires the
+ * bucket, so an upload will fail with a clear message if it is ever missing.
  */
 export async function ensureBucketExists(): Promise<void> {
-  const { data: buckets } = await supabase.storage.listBuckets();
-  const bucketExists = buckets?.some((b) => b.name === BUCKET_NAME);
-
-  if (!bucketExists) {
-    throw new Error(`Storage bucket "${BUCKET_NAME}" not found. Please run the SQL migration to create it.`);
-  }
+  return;
 }
 
 /**

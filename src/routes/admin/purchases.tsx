@@ -65,6 +65,7 @@ type ProductRow = {
   slot_total_charge: number;
   slot_charge_per_product: number;
   other_charges: number;
+  per_unit_other: number;
   total_unit_cost: number;
   final_purchase_cost: number;
   retail_profit_pct: number;
@@ -130,6 +131,7 @@ const blankRow = (serial: number): ProductRow => ({
   slot_total_charge: 0,
   slot_charge_per_product: 0,
   other_charges: 0,
+  per_unit_other: 0,
   total_unit_cost: 0,
   final_purchase_cost: 0,
   retail_profit_pct: 0,
@@ -213,8 +215,8 @@ function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: numbe
   const otherCharges = Number(r.other_charges) || 0;
   const perUnitOther = qty > 0 ? Math.round((otherCharges / qty) * 100) / 100 : 0;
   
-  // Subtotal = Retail Price + Delivery + Packing
-  const subtotal = retail_price + totalDeliveryPacking + totalDelivery;
+  // Subtotal = Retail Price + Other Charges + Delivery + Packing
+  const subtotal = retail_price + otherCharges + totalDeliveryPacking + totalDelivery;
   
   // GST calculation
   const gst_pct = Math.min(Math.max(Number(r.gst_rate) || 0, 0), 100);
@@ -241,8 +243,8 @@ function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: numbe
     // Other charges per unit (flat total for the line)
     other_charges: otherCharges,
     per_unit_other: perUnitOther,
-    // For purchase total: (Unit Price + Slot Charge per unit) × Quantity
-    final_purchase_cost: purchase_total,
+    // For purchase total: (Unit Price + Slot Charge per unit) × Quantity + Other Charges
+    final_purchase_cost: Math.round((purchase_total + otherCharges) * 100) / 100,
     // Slot charge per product is already stored in the row, we just use it
     slot_charge_per_product: r.slot_id ? (() => {
       const slot = slotsList.find((s) => s.id === r.slot_id);
@@ -3347,6 +3349,7 @@ function Purchases() {
                     <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-left border-b border-border">Product Name</th>
                     <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center border-b border-border w-20">Slot</th>
                     <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-right border-b border-border w-24">Slot Charge</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-right border-b border-border w-24">GST Amount</th>
                     <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center border-b border-border w-20">Actions</th>
                   </tr>
                 </thead>
@@ -3373,6 +3376,13 @@ function Purchases() {
                       <td className="px-3 py-2.5 text-right text-xs font-semibold text-foreground">
                         {row.slot_charge_per_product > 0 ? (
                           <span>₹{row.slot_charge_per_product.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-muted-foreground/50">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-xs font-semibold text-foreground">
+                        {row.gst_amount > 0 ? (
+                          <span className="text-amber-700">₹{row.gst_amount.toFixed(2)}</span>
                         ) : (
                           <span className="text-muted-foreground/50">—</span>
                         )}

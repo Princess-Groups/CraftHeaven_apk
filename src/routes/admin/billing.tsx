@@ -451,10 +451,9 @@ function Billing() {
     };
   }, []);
 
-  // Load printers on mount and when hardware config changes
-  useEffect(() => {
-    loadPrinters();
-  }, []);
+  // Printers are loaded ONLY when the user clicks Refresh (the localhost Print
+  // Agent is often not running, so probing it on page load would log
+  // "net::ERR_CONNECTION_REFUSED" to the console on every visit).
 
   // Initialize receipt printer from hardware config when it loads
   useEffect(() => {
