@@ -3346,6 +3346,9 @@ function Purchases() {
                 </tbody>
               </table>
             </div>
+            <div className="flex items-center justify-between px-4 py-3 bg-muted border-b border-border">
+              <h3 className="text-sm font-bold text-primary">Purchase Summary</h3>
+            </div>
           </div>
 
           {/* Product Entry Section */}
@@ -3385,7 +3388,10 @@ function Purchases() {
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <div className="flex items-center justify-between px-4 py-3 bg-muted border-b border-border">
+              <h3 className="text-sm font-bold text-muted-foreground">Product Summary</h3>
+            </div>
+            <p className="text-xs text-muted-foreground px-4 pb-3">
               Add new products that don't exist in your inventory. This will create a new product entry and add it to your current purchase.
             </p>
           </div>
