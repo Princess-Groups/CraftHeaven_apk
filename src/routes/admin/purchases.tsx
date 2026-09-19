@@ -2067,6 +2067,22 @@ function Purchases() {
       }
       if (!purchaseId) throw new Error("Failed to create purchase");
 
+      // Sync retail selling price into each product so label printing / inventory
+      // show the real selling price (price = RSP) when one was entered.
+      for (const r of recalcRows) {
+        const rsp = Number(r.retail_selling_price) || 0;
+        if (rsp <= 0) continue;
+        try {
+          if (r.id) {
+            await supabase.from("products").update({ price: rsp }).eq("id", r.id);
+          } else if (r.barcode?.trim()) {
+            await supabase.from("products").update({ price: rsp }).eq("barcode", r.barcode.trim());
+          }
+        } catch (priceErr) {
+          console.error("[Purchases] Retail price sync error:", priceErr);
+        }
+      }
+
       // Persist slot charges via upsert_purchase_slot for each unique slot
       const slotIds = getSlotIds(recalcRows);
       for (const slotId of slotIds) {
