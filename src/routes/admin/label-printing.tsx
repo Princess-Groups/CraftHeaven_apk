@@ -71,6 +71,7 @@ type LabelBatchItem = {
 type SlotProduct = {
   product_id: string | null;
   quantity: number;
+  selling_price: number | null;
   products: {
     id: string;
     name: string;
@@ -135,7 +136,7 @@ function LabelPrinting() {
       if (!selectedSlotId) return [] as SlotProduct[];
       const { data, error } = await supabase
         .from("purchase_items")
-        .select("product_id,quantity,products(id,name,sku,barcode,price,stock,unit,material)")
+        .select("product_id,quantity,selling_price,products(id,name,sku,barcode,price,stock,unit,material)")
         .eq("slot_number", selectedSlotId);
       if (error) throw error;
       return (data ?? []) as unknown as SlotProduct[];
@@ -432,7 +433,7 @@ function LabelPrinting() {
                       <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
                         <span>SKU: <b className="text-foreground">{product.sku || "—"}</b></span>
                         <span>Barcode: <b className="font-mono text-foreground">{product.barcode || "—"}</b></span>
-                        <span>Price: <b className="text-foreground">₹{Number(product.price).toFixed(2)}</b></span>
+                        <span>Price: <b className="text-foreground">₹{Number((Number(item.selling_price) > 0 ? item.selling_price : product.price) ?? 0).toFixed(2)}</b></span>
                         <span>Slot qty: <b className="text-foreground">{item.quantity} {product.unit}</b></span>
                         <span>Stock: <b className="text-foreground">{product.stock}</b></span>
                         {product.material && <span>Material: <b className="text-foreground">{product.material}</b></span>}
