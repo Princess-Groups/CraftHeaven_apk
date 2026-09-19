@@ -1,47 +1,20 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
-  Printer,
   Search,
   Loader2,
   CheckCircle2,
   Clock,
   AlertCircle,
-  ChevronDown,
-  ChevronUp,
   RotateCcw,
-  History,
   Package,
   Tags,
-  X,
-  Eye,
-  Wifi,
-  WifiOff,
-  Settings,
-  Maximize2,
   RefreshCw,
   FileDown,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  getPrinters,
-  getPrinterStatus,
-  printLabels as printLabelsToAgent,
-  printTestLabel,
-  generateBatchLabelPreview,
-  openLabelPreview,
-  type PrinterInfo,
-  type LabelPrintJob,
-  type LabelItem,
-  type LabelTemplateOptions,
-  DEFAULT_LABEL_TEMPLATE,
-} from "@/lib/print-service";
-import {
-  getHardwareConfig,
-  type HardwareConfig,
-} from "@/lib/hardware";
 
 export const Route = createFileRoute("/admin/label-printing")({
   head: () => ({ meta: [{ title: "Label Printing — ACH Admin" }] }),
@@ -93,17 +66,6 @@ type LabelBatchItem = {
   created_at: string;
 };
 
-type PrintHistory = {
-  id: string;
-  batch_id: string;
-  product_name: string;
-  barcode: string | null;
-  quantity_printed: number;
-  printed_by: string | null;
-  printed_at: string;
-  notes: string | null;
-};
-
 // Product details are loaded from products rather than the label batch snapshot
 // so changes are reflected before a label is printed.
 type SlotProduct = {
@@ -149,101 +111,7 @@ function LabelPrinting() {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<number>(0);
-  const [showHistory, setShowHistory] = useState(false);
-  const [printing, setPrinting] = useState(false);
   const [creating, setCreating] = useState(false);
-
-  // Printer-related state
-  const [selectedPrinterId, setSelectedPrinterId] = useState<string>("");
-  const [printers, setPrinters] = useState<PrinterInfo[]>([]);
-  const [printerLoading, setPrinterLoading] = useState(false);
-  const [printerStatus, setPrinterStatus] = useState<Record<string, "connected" | "disconnected" | "error" | "unknown">>({});
-  const [showPrinterSettings, setShowPrinterSettings] = useState(false);
-  const [labelTemplate, setLabelTemplate] = useState<LabelTemplateOptions>(DEFAULT_LABEL_TEMPLATE);
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewItems, setPreviewItems] = useState<LabelBatchItem[]>([]);
-
-  // Store info for labels
-  const storeName = "ATHIRA'S CREATIVE HAVEN";
-  const storeAddress = "Chennai, TN - 600018";
-
-  // Load hardware configuration from database
-  const { data: hwData, refetch: refetchHardware } = useQuery({
-    queryKey: ["hardware-config"],
-    queryFn: () => getHardwareConfig(),
-    refetchOnWindowFocus: false,
-  });
-
-  // Load printers on mount and when hardware config changes
-  useEffect(() => {
-    loadPrinters();
-  }, []);
-
-  // Initialize label template from hardware config when it loads
-  useEffect(() => {
-    if (hwData?.config) {
-      const cfg = hwData.config;
-      setLabelTemplate({
-        labelWidth: cfg.label_width_mm ?? DEFAULT_LABEL_TEMPLATE.labelWidth,
-        labelHeight: cfg.label_height_mm ?? DEFAULT_LABEL_TEMPLATE.labelHeight,
-        margin: cfg.label_margin_mm ?? DEFAULT_LABEL_TEMPLATE.margin,
-        barcodeType: cfg.label_barcode_type ?? DEFAULT_LABEL_TEMPLATE.barcodeType,
-        barcodeHeight: DEFAULT_LABEL_TEMPLATE.barcodeHeight,
-        barcodeWidth: DEFAULT_LABEL_TEMPLATE.barcodeWidth,
-        textSize: DEFAULT_LABEL_TEMPLATE.textSize,
-        showMRP: cfg.label_show_mrp ?? DEFAULT_LABEL_TEMPLATE.showMRP,
-        showOfferPrice: cfg.label_show_offer_price ?? DEFAULT_LABEL_TEMPLATE.showOfferPrice,
-        showBatchNumber: cfg.label_show_batch_number ?? DEFAULT_LABEL_TEMPLATE.showBatchNumber,
-        showExpiryDate: cfg.label_show_expiry_date ?? DEFAULT_LABEL_TEMPLATE.showExpiryDate,
-        showSKU: cfg.label_show_sku ?? DEFAULT_LABEL_TEMPLATE.showSKU,
-        showStoreName: cfg.label_show_store_name ?? DEFAULT_LABEL_TEMPLATE.showStoreName,
-        showStoreAddress: cfg.label_show_store_address ?? DEFAULT_LABEL_TEMPLATE.showStoreAddress,
-      });
-
-      // Auto-select label printer from hardware config
-      if (cfg.label_printer_id && !selectedPrinterId) {
-        setSelectedPrinterId(cfg.label_printer_id);
-      }
-    }
-  }, [hwData?.config, selectedPrinterId]);
-
-  const loadPrinters = useCallback(async () => {
-    setPrinterLoading(true);
-    try {
-      // Use printers from hardware config (fetched server-side from Print Agent)
-      if (hwData?.printers?.length) {
-        setPrinters(hwData.printers);
-        // Auto-select default printer if none selected
-        const defaultPrinter = hwData.printers.find(p => p.isDefault) || hwData.printers[0];
-        if (defaultPrinter && !selectedPrinterId) {
-          setSelectedPrinterId(defaultPrinter.id);
-          checkPrinterStatus(defaultPrinter.id);
-        }
-      } else {
-        // Fallback to client-side fetch
-        const printerList = await getPrinters();
-        setPrinters(printerList);
-        const defaultPrinter = printerList.find(p => p.isDefault) || printerList[0];
-        if (defaultPrinter && !selectedPrinterId) {
-          setSelectedPrinterId(defaultPrinter.id);
-          checkPrinterStatus(defaultPrinter.id);
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load printers:", error);
-    } finally {
-      setPrinterLoading(false);
-    }
-  }, [hwData?.printers, selectedPrinterId]);
-
-  const checkPrinterStatus = useCallback(async (printerId: string) => {
-    try {
-      const status = await getPrinterStatus(printerId);
-      setPrinterStatus(prev => ({ ...prev, [printerId]: status.status }));
-    } catch (error) {
-      setPrinterStatus(prev => ({ ...prev, [printerId]: "error" }));
-    }
-  }, []);
 
   // Fetch slots
   const { data: slots } = useQuery({
@@ -314,21 +182,6 @@ function LabelPrinting() {
     enabled: !!batch?.id,
   });
 
-  // Fetch print history
-  const { data: printHistory, isLoading: historyLoading } = useQuery({
-    queryKey: ["label-print-history", batch?.id],
-    queryFn: async () => {
-      if (!batch?.id) return [];
-      const { data } = await supabase
-        .from("label_print_history")
-        .select("*")
-        .eq("batch_id", batch.id)
-        .order("printed_at", { ascending: false });
-      return (data ?? []) as PrintHistory[];
-    },
-    enabled: !!batch?.id && showHistory,
-  });
-
   // Filter items by search
   const filteredItems = useMemo(() => {
     if (!batchItems) return [];
@@ -397,145 +250,6 @@ function LabelPrinting() {
     },
     [batch?.id, selectedSlotId, qc]
   );
-
-  // Print labels using Print Agent
-  const printLabels = useCallback(
-    async (itemIds?: string[]) => {
-      if (!batch?.id || !selectedPrinterId) {
-        if (!selectedPrinterId) toast.error("Please select a printer first");
-        return;
-      }
-      setPrinting(true);
-      try {
-        const ids = itemIds || undefined;
-        const quantities = ids?.map((id) => {
-          const item = batchItems?.find((i) => i.id === id);
-          return item ? item.labels_to_print - item.labels_printed : 0;
-        });
-
-        // First, mark labels as printed in database
-        const { data, error } = await supabase.rpc("mark_labels_printed", {
-          _batch_id: batch.id,
-          _item_ids: ids || null,
-          _quantities: quantities || null,
-        });
-        if (error) throw error;
-
-        const printed = Number(data) || 0;
-        if (printed > 0) {
-          // Prepare items for Print Agent
-          const itemsToPrint = ids
-            ? batchItems?.filter((i) => ids.includes(i.id))
-            : batchItems?.filter((i) => i.labels_printed < i.labels_to_print);
-
-          if (itemsToPrint && itemsToPrint.length > 0) {
-            // Use hardware config for template settings
-            const cfg = hwData?.config;
-
-            // Convert to LabelItem format for print service
-            const labelItems: LabelItem[] = itemsToPrint.flatMap(item => {
-              const product = item.product_id ? currentProductsById.get(item.product_id) : null;
-              return Array(item.labels_to_print - item.labels_printed).fill(null).map(() => ({
-                productName: product?.name ?? item.product_name,
-                sku: product?.sku ?? undefined,
-                barcode: product?.barcode ?? item.barcode ?? "N/A",
-                sellingPrice: Number(product?.price ?? item.selling_price ?? 0),
-                mrp: undefined,
-                offerPrice: undefined,
-                quantity: 1,
-              }));
-            });
-
-            const printJob: LabelPrintJob = {
-              printerId: selectedPrinterId,
-              items: labelItems,
-              storeName,
-              storeAddress,
-              labelWidth: cfg?.label_width_mm ?? labelTemplate.labelWidth,
-              labelHeight: cfg?.label_height_mm ?? labelTemplate.labelHeight,
-              margin: cfg?.label_margin_mm ?? labelTemplate.margin,
-              copies: cfg?.default_label_copies ?? 1,
-              template: (cfg?.label_template as "standard" | "compact" | "detailed") ?? "standard",
-            };
-
-            // Send to Print Agent
-            const result = await printLabelsToAgent(printJob);
-            if (result.status === "completed") {
-              toast.success(`${printed} labels sent to printer`);
-            } else {
-              toast.warning("Print job queued");
-            }
-          }
-        } else {
-          toast.info("No labels to print");
-        }
-
-        qc.invalidateQueries({ queryKey: ["label-batch-items", batch.id] });
-        qc.invalidateQueries({ queryKey: ["label-batch", selectedSlotId] });
-        setSelectedItems(new Set());
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to print");
-      } finally {
-        setPrinting(false);
-      }
-    },
-    [batch?.id, batchItems, selectedSlotId, selectedPrinterId, labelTemplate, hwData?.config, currentProductsById, qc]
-  );
-
-  // Preview labels using print service
-  const handlePreview = useCallback((itemIds?: string[]) => {
-    if (!batch?.id) return;
-    const ids = itemIds || undefined;
-    const itemsToPrint = ids
-      ? batchItems?.filter((i) => ids.includes(i.id))
-      : batchItems?.filter((i) => i.labels_printed < i.labels_to_print);
-
-    if (itemsToPrint && itemsToPrint.length > 0) {
-      setPreviewItems(itemsToPrint);
-      setShowPreview(true);
-    }
-  }, [batch?.id, batchItems]);
-
-  // Open preview in new window
-  const handleOpenPreview = useCallback((itemIds?: string[]) => {
-    if (!batch?.id) return;
-    const ids = itemIds || undefined;
-    const itemsToPrint = ids
-      ? batchItems?.filter((i) => ids.includes(i.id))
-      : batchItems?.filter((i) => i.labels_printed < i.labels_to_print);
-
-    if (itemsToPrint && itemsToPrint.length > 0) {
-      const cfg = hwData?.config;
-      // Merge hardware config with current labelTemplate
-      const template: LabelTemplateOptions = {
-        ...labelTemplate,
-        labelWidth: cfg?.label_width_mm ?? labelTemplate.labelWidth,
-        labelHeight: cfg?.label_height_mm ?? labelTemplate.labelHeight,
-        margin: cfg?.label_margin_mm ?? labelTemplate.margin,
-        barcodeType: cfg?.label_barcode_type ?? labelTemplate.barcodeType,
-        showMRP: cfg?.label_show_mrp ?? labelTemplate.showMRP,
-        showOfferPrice: cfg?.label_show_offer_price ?? labelTemplate.showOfferPrice,
-        showBatchNumber: cfg?.label_show_batch_number ?? labelTemplate.showBatchNumber,
-        showExpiryDate: cfg?.label_show_expiry_date ?? labelTemplate.showExpiryDate,
-        showSKU: cfg?.label_show_sku ?? labelTemplate.showSKU,
-        showStoreName: cfg?.label_show_store_name ?? labelTemplate.showStoreName,
-        showStoreAddress: cfg?.label_show_store_address ?? labelTemplate.showStoreAddress,
-      };
-      const labelItems: LabelItem[] = itemsToPrint.flatMap(item => {
-        const product = item.product_id ? currentProductsById.get(item.product_id) : null;
-        return Array(item.labels_to_print - item.labels_printed).fill(null).map(() => ({
-          productName: product?.name ?? item.product_name,
-          sku: product?.sku ?? undefined,
-          barcode: product?.barcode ?? item.barcode ?? "N/A",
-          sellingPrice: Number(product?.price ?? item.selling_price ?? 0),
-          mrp: undefined,
-          offerPrice: undefined,
-          quantity: 1,
-        }));
-      });
-      openLabelPreview(labelItems, template, storeName, storeAddress);
-    }
-  }, [batch?.id, batchItems, labelTemplate, hwData?.config, currentProductsById]);
 
   // Export label batch details to Excel (CSV format) for the client's label software
   const exportToExcel = useCallback(() => {
@@ -609,33 +323,6 @@ function LabelPrinting() {
           <Tags className="h-5 w-5 text-primary" />
           Label Printing
         </h1>
-        {/* Printer Settings must remain available even when the local agent is offline. */}
-        <div className="ml-auto flex items-center gap-2">
-          {selectedPrinterId ? (
-            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 shadow-sm">
-              <Printer className="h-4 w-4 text-muted-foreground" />
-              <select
-                value={selectedPrinterId}
-                onChange={(e) => {
-                  setSelectedPrinterId(e.target.value);
-                  checkPrinterStatus(e.target.value);
-                }}
-                className="bg-transparent text-sm outline-none"
-              >
-                {printers.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status})</option>)}
-              </select>
-            </div>
-          ) : (
-            <span className="hidden text-xs text-muted-foreground sm:inline">Printer not connected</span>
-          )}
-          <button
-            onClick={() => setShowPrinterSettings(!showPrinterSettings)}
-            className="rounded-lg p-2 border border-border bg-white hover:bg-secondary-soft transition"
-            title="Printer Settings"
-          >
-            <Settings className="h-4 w-4 text-muted-foreground" />
-          </button>
-        </div>
       </div>
 
       {/* Slot Selection */}
@@ -651,7 +338,6 @@ function LabelPrinting() {
                 setSelectedSlotId(e.target.value);
                 setSelectedItems(new Set());
                 setEditingItem(null);
-                setShowHistory(false);
               }}
               className="w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             >
@@ -672,16 +358,6 @@ function LabelPrinting() {
             >
               {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-3.5 w-3.5" />}
               {creating ? "Creating…" : "Create Label Batch"}
-            </button>
-          )}
-
-          {selectedSlotId && batch && (
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
-            >
-              <History className="h-3.5 w-3.5" />
-              {showHistory ? "Hide History" : "Print History"}
             </button>
           )}
         </div>
@@ -766,52 +442,6 @@ function LabelPrinting() {
         )}
       </div>
 
-      {/* Print History Panel */}
-      {showHistory && batch && (
-        <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
-          <div className="px-4 py-3 bg-muted border-b border-border">
-            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-              <History className="h-4 w-4 text-primary" />
-              Print History — Slot #{batch.slot_name}
-            </h3>
-          </div>
-          {historyLoading ? (
-            <div className="p-8 text-center">
-              <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto" />
-            </div>
-          ) : printHistory && printHistory.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted text-[10px] uppercase text-muted-foreground">
-                  <tr>
-                    <th className="p-2.5 text-left">Product</th>
-                    <th className="p-2.5 text-left">Barcode</th>
-                    <th className="p-2.5 text-center">Qty Printed</th>
-                    <th className="p-2.5 text-left">Printed At</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {printHistory.map((h) => (
-                    <tr key={h.id} className="border-t border-border">
-                      <td className="p-2.5 text-xs font-medium">{h.product_name}</td>
-                      <td className="p-2.5 text-xs text-muted-foreground font-mono">{h.barcode || "—"}</td>
-                      <td className="p-2.5 text-xs text-center font-bold text-primary">{h.quantity_printed}</td>
-                      <td className="p-2.5 text-xs text-muted-foreground">
-                        {new Date(h.printed_at).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="p-8 text-center text-xs text-muted-foreground/70">
-              No print history yet for this batch.
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Items Table */}
       {selectedSlotId && (
         <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
@@ -837,74 +467,9 @@ function LabelPrinting() {
               </div>
             </div>
 
-            {/* Printer Selection & Actions */}
+            {/* Actions */}
             {batch && (
               <div className="flex flex-wrap items-center gap-2">
-                {/* Printer dropdown */}
-                {printers.length > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide hidden sm:block">
-                      Printer
-                    </label>
-                    <select
-                      value={selectedPrinterId}
-                      onChange={(e) => {
-                        setSelectedPrinterId(e.target.value);
-                        checkPrinterStatus(e.target.value);
-                      }}
-                      disabled={printerLoading}
-                      className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary min-w-[180px]"
-                    >
-                      {printers.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} {p.status === "connected" ? "✓" : p.status === "error" ? "✗" : "○"}
-                        </option>
-                      ))}
-                    </select>
-                    {printerLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
-                    {selectedPrinterId && (
-                      <span
-                        className={`w-2 h-2 rounded-full ${
-                          printerStatus[selectedPrinterId] === "connected" ? "bg-emerald-500" :
-                          printerStatus[selectedPrinterId] === "error" ? "bg-red-500" :
-                          "bg-amber-500"
-                        }`}
-                        title={printerStatus[selectedPrinterId] || "Unknown"}
-                      />
-                    )}
-                  </div>
-                )}
-
-                {selectedItems.size > 0 && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handlePreview(Array.from(selectedItems))}
-                      disabled={printing}
-                      className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
-                      title="Preview Selected"
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline">Preview</span>
-                    </button>
-                    <button
-                      onClick={() => handleOpenPreview(Array.from(selectedItems))}
-                      disabled={printing}
-                      className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
-                      title="Open Preview in New Window"
-                    >
-                      <Maximize2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => printLabels(Array.from(selectedItems))}
-                      disabled={printing || !selectedPrinterId}
-                      className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition"
-                    >
-                      {printing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-                      <span className="hidden sm:inline">Print Selected ({selectedItems.size})</span>
-                      <span className="sm:hidden">Print</span>
-                    </button>
-                  </div>
-                )}
                 <div className="flex items-center gap-1">
                   <button
                     onClick={exportToExcel}
@@ -915,48 +480,6 @@ function LabelPrinting() {
                     <FileDown className="h-3.5 w-3.5" />
                     <span className="hidden sm:inline">Export Excel</span>
                     <span className="sm:hidden">Excel</span>
-                  </button>
-                  <button
-                    onClick={() => handlePreview()}
-                    disabled={printing || stats.remaining === 0}
-                    className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
-                    title="Preview All Labels"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">Preview All</span>
-                  </button>
-                  <button
-                    onClick={() => handleOpenPreview()}
-                    disabled={printing || stats.remaining === 0}
-                    className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
-                    title="Open Preview in New Window"
-                  >
-                    <Maximize2 className="h-3.5 w-3.5" />
-                  </button>
-                  {selectedPrinterId && (
-                    <button
-                      onClick={() => {
-                        const cfg = hwData?.config;
-                        const width = cfg?.label_width_mm ?? labelTemplate.labelWidth;
-                        const height = cfg?.label_height_mm ?? labelTemplate.labelHeight;
-                        printTestLabel(selectedPrinterId, width, height).then(() => toast.success("Test label sent")).catch(e => toast.error(e.message));
-                      }}
-                      disabled={printing}
-                      className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
-                      title="Print Test Label"
-                    >
-                      <Wifi className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline">Test Print</span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => printLabels()}
-                    disabled={printing || stats.remaining === 0 || !selectedPrinterId}
-                    className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50 transition"
-                  >
-                    {printing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-                    <span className="hidden sm:inline">Print All Labels for This Slot</span>
-                    <span className="sm:hidden">Print All</span>
                   </button>
                 </div>
               </div>
@@ -977,7 +500,7 @@ function LabelPrinting() {
               <Package className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-sm font-medium text-foreground">No Label Batch Found</p>
               <p className="text-xs text-muted-foreground/70 mt-1 mb-4">
-                Create a label batch for this slot to start printing labels.
+                Create a label batch for this slot to view and export the label details.
               </p>
               <button
                 onClick={createBatch}
@@ -1111,16 +634,6 @@ function LabelPrinting() {
                                 >
                                   <RotateCcw className="h-3.5 w-3.5 text-primary" />
                                 </button>
-                                {remaining > 0 && (
-                                  <button
-                                    onClick={() => printLabels([item.id])}
-                                    disabled={printing}
-                                    className="rounded p-1 hover:bg-emerald-50 transition"
-                                    title={`Print ${remaining} label(s)`}
-                                  >
-                                    <Printer className="h-3.5 w-3.5 text-emerald-600" />
-                                  </button>
-                                )}
                               </>
                             )}
                           </div>
@@ -1164,284 +677,8 @@ function LabelPrinting() {
           <Tags className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
           <p className="text-sm font-medium text-foreground">Select a Purchase Slot</p>
           <p className="text-xs text-muted-foreground/70 mt-1 max-w-sm mx-auto">
-            Choose a slot above to view its label batch. You can create labels for all products in that slot
-            and print them in one go.
+            Choose a slot above to view its label batch and export the product details.
           </p>
-        </div>
-      )}
-
-      {/* Printer Settings Panel */}
-      {showPrinterSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white shadow-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-foreground">Printer Settings</h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => refetchHardware()}
-                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft"
-                  title="Refresh from Hardware Settings"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => setShowPrinterSettings(false)}
-                  className="rounded p-1 hover:bg-muted transition"
-                >
-                  <X className="h-5 w-5 text-muted-foreground" />
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-2">
-                  Select Printer
-                </label>
-                {printerLoading ? (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                    <span className="text-sm text-muted-foreground">Loading printers...</span>
-                  </div>
-                ) : printers.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border bg-white/50 py-8 text-center">
-                    <WifiOff className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">No printers found</p>
-                    <p className="text-xs text-muted-foreground/70 mt-1">
-                      Ensure the Print Agent is running on localhost:3030
-                    </p>
-                    <button
-                      onClick={loadPrinters}
-                      className="mt-3 text-xs font-semibold text-primary hover:underline"
-                    >
-                      Refresh
-                    </button>
-                  </div>
-                ) : (
-                  <select
-                    value={selectedPrinterId}
-                    onChange={(e) => {
-                      setSelectedPrinterId(e.target.value);
-                      checkPrinterStatus(e.target.value);
-                    }}
-                    className="w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  >
-                    {printers.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.type}) - {p.status}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              {selectedPrinterId && (
-                <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground">Status</span>
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                        printerStatus[selectedPrinterId] === "connected" ? "bg-emerald-50 text-emerald-700" :
-                        printerStatus[selectedPrinterId] === "error" ? "bg-red-50 text-red-700" :
-                        "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      <span className={`w-1.5 h-1.5 rounded-full ${
-                        printerStatus[selectedPrinterId] === "connected" ? "bg-emerald-500" :
-                        printerStatus[selectedPrinterId] === "error" ? "bg-red-500" :
-                        "bg-amber-500"
-                      }`} />
-                      {printerStatus[selectedPrinterId] || "Unknown"}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => checkPrinterStatus(selectedPrinterId)}
-                    className="text-xs font-semibold text-primary hover:underline w-full"
-                  >
-                    Refresh Status
-                  </button>
-                  <button
-                    onClick={() => {
-                      const cfg = hwData?.config;
-                      const width = cfg?.label_width_mm ?? labelTemplate.labelWidth;
-                      const height = cfg?.label_height_mm ?? labelTemplate.labelHeight;
-                      printTestLabel(selectedPrinterId, width, height).then(() => toast.success("Test label sent")).catch(e => toast.error(e.message));
-                    }}
-                    disabled={printing}
-                    className="flex items-center gap-2 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-secondary-soft transition disabled:opacity-50"
-                  >
-                    <Wifi className="h-4 w-4" />
-                    Print Test Label
-                  </button>
-                </div>
-              )}
-
-              <div className="pt-2 border-t border-border">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                  Label Template Settings
-                </h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">
-                      Label Width (mm)
-                    </label>
-                    <input
-                      type="number"
-                      min="10"
-                      max="100"
-                      step="1"
-                      value={labelTemplate.labelWidth}
-                      onChange={(e) => setLabelTemplate(prev => ({ ...prev, labelWidth: Number(e.target.value) }))}
-                      className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">
-                      Label Height (mm)
-                    </label>
-                    <input
-                      type="number"
-                      min="10"
-                      max="100"
-                      step="1"
-                      value={labelTemplate.labelHeight}
-                      onChange={(e) => setLabelTemplate(prev => ({ ...prev, labelHeight: Number(e.target.value) }))}
-                      className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">
-                      Margin (mm)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="10"
-                      step="1"
-                      value={labelTemplate.margin}
-                      onChange={(e) => setLabelTemplate(prev => ({ ...prev, margin: Number(e.target.value) }))}
-                      className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">
-                      Text Size
-                    </label>
-                    <select
-                      value={labelTemplate.textSize}
-                      onChange={(e) => setLabelTemplate(prev => ({ ...prev, textSize: e.target.value as "small" | "medium" | "large" }))}
-                      className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                    >
-                      <option value="small">Small</option>
-                      <option value="medium">Medium</option>
-                      <option value="large">Large</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {[
-                    { key: "showMRP", label: "Show MRP" },
-                    { key: "showOfferPrice", label: "Show Offer Price" },
-                    { key: "showBatchNumber", label: "Show Batch Number" },
-                    { key: "showExpiryDate", label: "Show Expiry Date" },
-                    { key: "showSKU", label: "Show SKU" },
-                    { key: "showStoreName", label: "Show Store Name" },
-                    { key: "showStoreAddress", label: "Show Store Address" },
-                  ].map(({ key, label }) => (
-                    <label key={key} className="flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={labelTemplate[key as keyof LabelTemplateOptions] as boolean}
-                        onChange={(e) => setLabelTemplate(prev => ({ ...prev, [key]: e.target.checked }))}
-                        className="rounded border-border"
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                onClick={() => setShowPrinterSettings(false)}
-                className="rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-secondary-soft transition"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Preview Modal */}
-      {showPreview && previewItems.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-4xl h-[90vh] rounded-xl bg-white shadow-xl flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-border">
-              <h3 className="text-lg font-bold text-foreground">
-                Label Preview - {previewItems.length} product(s)
-              </h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleOpenPreview(
-                    previewItems.map(i => i.id)
-                  )}
-                  className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary-soft transition"
-                >
-                  <Maximize2 className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Open in New Window</span>
-                </button>
-                <button
-                  onClick={() => setShowPreview(false)}
-                  className="rounded p-1 hover:bg-muted transition"
-                >
-                  <X className="h-5 w-5 text-muted-foreground" />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto p-4">
-              {(() => {
-                const cfg = hwData?.config;
-                const template: LabelTemplateOptions = {
-                  ...labelTemplate,
-                  labelWidth: cfg?.label_width_mm ?? labelTemplate.labelWidth,
-                  labelHeight: cfg?.label_height_mm ?? labelTemplate.labelHeight,
-                  margin: cfg?.label_margin_mm ?? labelTemplate.margin,
-                  barcodeType: cfg?.label_barcode_type ?? labelTemplate.barcodeType,
-                  showMRP: cfg?.label_show_mrp ?? labelTemplate.showMRP,
-                  showOfferPrice: cfg?.label_show_offer_price ?? labelTemplate.showOfferPrice,
-                  showBatchNumber: cfg?.label_show_batch_number ?? labelTemplate.showBatchNumber,
-                  showExpiryDate: cfg?.label_show_expiry_date ?? labelTemplate.showExpiryDate,
-                  showSKU: cfg?.label_show_sku ?? labelTemplate.showSKU,
-                  showStoreName: cfg?.label_show_store_name ?? labelTemplate.showStoreName,
-                  showStoreAddress: cfg?.label_show_store_address ?? labelTemplate.showStoreAddress,
-                };
-                return (
-                  <iframe
-                    srcDoc={generateBatchLabelPreview(
-                      previewItems.flatMap(item =>
-                        Array(item.labels_to_print - item.labels_printed).fill(null).map(() => ({
-                          productName: item.product_name,
-                          sku: item.barcode || undefined,
-                          barcode: item.barcode || "N/A",
-                          sellingPrice: Number(item.selling_price || 0),
-                          mrp: undefined,
-                          offerPrice: undefined,
-                          quantity: 1,
-                        }))
-                      ),
-                      template,
-                      storeName,
-                      storeAddress
-                    )}
-                    className="w-full h-full border-0"
-                    title="Label Preview"
-                  />
-                );
-              })()}
-            </div>
-          </div>
         </div>
       )}
     </div>
