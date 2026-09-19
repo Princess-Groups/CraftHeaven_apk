@@ -54,6 +54,14 @@ export interface ReceiptPrintJob {
     sgstAmount?: number;
     igstAmount?: number;
   };
+  subtotal?: number;
+  discount?: number;
+  tax?: number;
+  shippingCharge?: number;
+  grandTotal?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
   paymentMethod: "CASH" | "UPI" | "CARD" | "COD";
   footerLines?: string[];
   options?: {
@@ -68,6 +76,7 @@ export interface ReceiptPrintJob {
 
 export interface ReceiptItem {
   name: string;
+  productName?: string;
   variation?: string;
   quantity: number;
   unit: string;

@@ -4,13 +4,15 @@
 
 import { EventEmitter } from "events";
 import { PrinterConfig, AgentConfig } from "../config/index.js";
-import * as usb from "usb";
+import { usb as usbInstance } from "usb";
 import { SerialPort } from "serialport";
 import net from "net";
 import { exec } from "child_process";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
+
+type UsbPrintingDevice = Awaited<ReturnType<typeof usbInstance.getDevices>>[number];
 
 export interface DiscoveredPrinter {
   id: string;
@@ -20,7 +22,7 @@ export interface DiscoveredPrinter {
     // USB
     vendorId?: number;
     productId?: number;
-    device?: usb.Device;
+    device?: UsbPrintingDevice;
     // Serial
     port?: string;
     baudRate?: number;
@@ -32,13 +34,15 @@ export interface DiscoveredPrinter {
   };
   status: "unknown" | "connected" | "disconnected" | "error";
   paperWidth?: "58mm" | "80mm";
+  labelWidth?: number;
+  labelHeight?: number;
   capabilities?: string[];
 }
 
 export class DeviceManager extends EventEmitter {
   private config: AgentConfig;
   private printers: Map<string, DiscoveredPrinter> = new Map();
-  private usbDevices: Map<string, usb.Device> = new Map();
+  private usbDevices: Map<string, UsbPrintingDevice> = new Map();
   private serialPorts: Map<string, SerialPort> = new Map();
   private networkConnections: Map<string, net.Socket> = new Map();
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -82,54 +86,34 @@ export class DeviceManager extends EventEmitter {
     const printers: DiscoveredPrinter[] = [];
 
     try {
-      const devices = usb.getDeviceList();
+      const devices = await usbInstance.getDevices();
 
       for (const device of devices) {
-        const descriptor = device.deviceDescriptor;
+        const vid = device.vendorId;
+        const pid = device.productId;
 
         // Check if it's a known printer class (0x07) or known vendor/product
-        const isPrinterClass = descriptor.bDeviceClass === 0x07;
-        const isKnownPrinter = this.isKnownPrinterVendor(descriptor.idVendor, descriptor.idProduct);
+        const isPrinterClass = device.deviceClass === 0x07;
+        const isKnownPrinter = this.isKnownPrinterVendor(vid, pid);
 
         if (isPrinterClass || isKnownPrinter) {
-          try {
-            // Try to open to verify access
-            device.open();
-            const interfaces = device.interfaces;
-            let hasPrinterInterface = false;
+          const id = `usb-${vid.toString(16).padStart(4, "0")}-${pid.toString(16).padStart(4, "0")}`;
+          const printer: DiscoveredPrinter = {
+            id,
+            name: `USB Printer (${vid.toString(16)}:${pid.toString(16)})`,
+            type: "usb",
+            connection: {
+              vendorId: vid,
+              productId: pid,
+              device,
+            },
+            status: "connected",
+            paperWidth: "80mm",
+            capabilities: ["escpos", "cut", "cash-drawer"],
+          };
 
-            for (const iface of interfaces) {
-              if (iface.descriptor.bInterfaceClass === 0x07) {
-                hasPrinterInterface = true;
-                break;
-              }
-            }
-
-            if (hasPrinterInterface || isKnownPrinter) {
-              const id = `usb-${descriptor.idVendor.toString(16).padStart(4, "0")}-${descriptor.idProduct.toString(16).padStart(4, "0")}`;
-              const printer: DiscoveredPrinter = {
-                id,
-                name: `USB Printer (${descriptor.idVendor.toString(16)}:${descriptor.idProduct.toString(16)})`,
-                type: "usb",
-                connection: {
-                  vendorId: descriptor.idVendor,
-                  productId: descriptor.idProduct,
-                  device,
-                },
-                status: "connected",
-                paperWidth: "80mm",
-                capabilities: ["escpos", "cut", "cash-drawer"],
-              };
-
-              this.usbDevices.set(id, device);
-              printers.push(printer);
-            }
-
-            device.close();
-          } catch (e) {
-            // Device busy or no permission
-            console.debug(`USB device ${descriptor.idVendor}:${descriptor.idProduct} not accessible:`, e);
-          }
+          this.usbDevices.set(id, device);
+          printers.push(printer);
         }
       }
     } catch (e) {
@@ -207,7 +191,7 @@ export class DeviceManager extends EventEmitter {
     for (const ip of commonIPs) {
       for (const port of commonPorts) {
         try {
-          const connected = await this.testTCPConnection(ip, port, 500);
+          const connected = await this.testTCPConnection(ip, port, 200);
           if (connected) {
             const id = `network-${ip}-${port}`;
             const printer: DiscoveredPrinter = {
@@ -246,8 +230,8 @@ export class DeviceManager extends EventEmitter {
             const parts = net.address.split(".");
             if (parts.length === 4) {
               const base = `${parts[0]}.${parts[1]}.${parts[2]}.`;
-              // Scan common range
-              for (let i = 1; i < 255; i++) {
+              // Scan a small range of the subnet (avoid slow full /24 sweep on startup)
+              for (let i = 1; i <= 10; i++) {
                 ips.push(`${base}${i}`);
               }
               break; // Just first interface
@@ -330,14 +314,36 @@ export class DeviceManager extends EventEmitter {
 
   // Get configured printers
   getConfiguredPrinters(): DiscoveredPrinter[] {
-    return this.config.printers.map(p => {
-      const discovered = this.printers.get(p.id);
-      return {
-        ...p,
-        status: discovered?.status ?? "unknown",
-        name: p.name,
-      } as DiscoveredPrinter;
-    });
+    return this.config.printers.map(p => this.toDiscovered(p));
+  }
+
+  private toDiscovered(cfg: PrinterConfig): DiscoveredPrinter {
+    const discovered = this.printers.get(cfg.id);
+    return {
+      id: cfg.id,
+      name: cfg.name,
+      type: cfg.type,
+      status: discovered?.status ?? "unknown",
+      paperWidth: cfg.paperWidth,
+      connection: {
+        vendorId: cfg.vendorId,
+        productId: cfg.productId,
+        port: cfg.port,
+        baudRate: cfg.baudRate,
+        ip: cfg.ip,
+        portNumber: cfg.portNumber,
+        windowsPrinterName: cfg.windowsPrinterName,
+      },
+      capabilities: cfg.type === "windows" ? ["windows", "cut"] : ["escpos", "cut"],
+    };
+  }
+
+  // Resolve a printer by id (discovered first, then configured)
+  private resolvePrinter(id: string): DiscoveredPrinter | undefined {
+    const discovered = this.printers.get(id);
+    if (discovered) return discovered;
+    const cfg = this.config.printers.find(p => p.id === id);
+    return cfg ? this.toDiscovered(cfg) : undefined;
   }
 
   // Add/update printer config
@@ -379,7 +385,7 @@ export class DeviceManager extends EventEmitter {
 
   // Connect to a printer
   async connect(id: string): Promise<boolean> {
-    const printer = this.printers.get(id) || this.config.printers.find(p => p.id === id);
+    const printer = this.resolvePrinter(id);
     if (!printer) return false;
 
     try {
@@ -405,23 +411,24 @@ export class DeviceManager extends EventEmitter {
   private async connectUSB(printer: DiscoveredPrinter): Promise<boolean> {
     if (!printer.connection.vendorId || !printer.connection.productId) return false;
 
-    const devices = usb.getDeviceList();
-    const device = devices.find(d =>
-      d.deviceDescriptor.idVendor === printer.connection.vendorId &&
-      d.deviceDescriptor.idProduct === printer.connection.productId
-    );
-
-    if (!device) return false;
-
     try {
-      device.open();
-      // Claim interface 0 typically
-      const iface = device.interfaces[0];
-      if (iface) {
-        iface.claim();
+      let device = this.usbDevices.get(printer.id) || printer.connection.device;
+      if (!device) {
+        device = await usbInstance.findDeviceByIds(printer.connection.vendorId, printer.connection.productId);
+        if (!device) return false;
+        this.usbDevices.set(printer.id, device);
       }
+
+      if (!device.opened) {
+        await device.open();
+      }
+      try {
+        await device.claimInterface(0);
+      } catch {
+        // Interface may already be claimed by another call
+      }
+
       printer.connection.device = device;
-      this.usbDevices.set(printer.id, device);
       printer.status = "connected";
       this.emit("status-change", { id: printer.id, status: "connected" });
       return true;
@@ -533,7 +540,7 @@ export class DeviceManager extends EventEmitter {
         case "usb": {
           const device = this.usbDevices.get(id);
           if (device) {
-            try { device.close(); } catch {}
+            try { await device.close(); } catch {}
             this.usbDevices.delete(id);
           }
           break;
@@ -564,7 +571,7 @@ export class DeviceManager extends EventEmitter {
 
   // Send raw data to printer
   async print(id: string, data: Uint8Array): Promise<{ success: boolean; error?: string }> {
-    const printer = this.printers.get(id) || this.config.printers.find(p => p.id === id);
+    const printer = this.resolvePrinter(id);
     if (!printer) {
       return { success: false, error: "Printer not found" };
     }
@@ -602,23 +609,35 @@ export class DeviceManager extends EventEmitter {
     if (!device) return { success: false, error: "USB device not connected" };
 
     try {
-      const iface = device.interfaces[0];
-      if (!iface) return { success: false, error: "No interface" };
+      if (!device.opened) {
+        await device.open();
+      }
+      try {
+        await device.claimInterface(0);
+      } catch {
+        // Interface may already be claimed
+      }
 
-      // Find OUT endpoint
-      const outEndpoint = iface.endpoints.find(e => e.direction === "out");
-      if (!outEndpoint) return { success: false, error: "No OUT endpoint" };
+      // Find OUT endpoint in the first available interface
+      const config = device.configuration;
+      let endpointNumber: number | undefined;
 
-      // Write in chunks (max 64KB per transfer)
+      for (const iface of config?.interfaces ?? []) {
+        const alt = iface.alternate || iface.alternates?.[0];
+        const endpoint = alt?.endpoints?.find(e => e.direction === "out");
+        if (endpoint) {
+          endpointNumber = endpoint.endpointNumber;
+          break;
+        }
+      }
+
+      if (!endpointNumber) return { success: false, error: "No OUT endpoint" };
+
+      // Write in chunks via native bulk transfer
       const chunkSize = 64 * 1024;
       for (let i = 0; i < data.length; i += chunkSize) {
         const chunk = data.slice(i, i + chunkSize);
-        await new Promise<void>((resolve, reject) => {
-          outEndpoint.transfer(chunk, (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
+        await device.nativeTransferOut(endpointNumber, 5000, chunk);
       }
 
       return { success: true };
@@ -671,8 +690,6 @@ export class DeviceManager extends EventEmitter {
   }
 
   private async printWindows(printer: DiscoveredPrinter, data: Uint8Array): Promise<{ success: boolean; error?: string }> {
-    // For Windows printers, we need to write to a temp file and use PrintDocument
-    // or use the Windows spooler API. For now, save to file and use PowerShell.
     const fs = await import("fs");
     const path = await import("path");
     const os = await import("os");
@@ -682,50 +699,54 @@ export class DeviceManager extends EventEmitter {
     try {
       fs.writeFileSync(tempFile, data);
 
-      // Use PowerShell to print raw data
-      const psScript = `
-        $bytes = [IO.File]::ReadAllBytes("${tempFile.replace(/\\/g, "\\\\")}")
-        $printer = "${printer.connection.windowsPrinterName}"
-        $hPrinter = 0
-        $pDefault = 0
-        $dll = Add-Type -MemberDefinition '
-          [DllImport("winspool.drv", CharSet=CharSet.Auto, SetLastError=true)]
-          public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
-          [DllImport("winspool.drv", CharSet=CharSet.Auto, SetLastError=true)]
-          public static extern bool StartDocPrinter(IntPtr hPrinter, int Level, byte[] pDocInfo);
-          [DllImport("winspool.drv", CharSet=CharSet.Auto, SetLastError=true)]
-          public static extern bool StartPagePrinter(IntPtr hPrinter);
-          [DllImport("winspool.drv", CharSet=CharSet.Auto, SetLastError=true)]
-          public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
-          [DllImport("winspool.drv", CharSet=CharSet.Auto, SetLastError=true)]
-          public static extern bool EndPagePrinter(IntPtr hPrinter);
-          [DllImport("winspool.drv", CharSet=CharSet.Auto, SetLastError=true)]
-          public static extern bool EndDocPrinter(IntPtr hPrinter);
-          [DllImport("winspool.drv", CharSet=CharSet.Auto, SetLastError=true)]
-          public static extern bool ClosePrinter(IntPtr hPrinter);
-        ' -Name "WinSpool" -Namespace "Printing" -PassThru
+      const printerName = (printer.connection.windowsPrinterName || printer.name).replace(/'/g, "''");
 
-        $docInfo = @("ACH Receipt", "RAW", $null)
-        $docInfoBytes = [System.Text.Encoding]::Unicode.GetBytes(($docInfo -join "`0") + "`0`0")
+      const psScript = [
+        "$bytes = [IO.File]::ReadAllBytes('" + tempFile + "')",
+        "$printer = '" + printerName + "'",
+        "$hPrinter = 0",
+        "Add-Type -TypeDefinition @'",
+        "using System;",
+        "using System.Runtime.InteropServices;",
+        "public static class WinSpool {",
+        "  [DllImport(\"winspool.drv\", CharSet = CharSet.Auto, SetLastError = true)]",
+        "  public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);",
+        "  [DllImport(\"winspool.drv\", CharSet = CharSet.Auto, SetLastError = true)]",
+        "  public static extern bool StartDocPrinter(IntPtr hPrinter, int Level, byte[] pDocInfo);",
+        "  [DllImport(\"winspool.drv\", CharSet = CharSet.Auto, SetLastError = true)]",
+        "  public static extern bool StartPagePrinter(IntPtr hPrinter);",
+        "  [DllImport(\"winspool.drv\", CharSet = CharSet.Auto, SetLastError = true)]",
+        "  public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);",
+        "  [DllImport(\"winspool.drv\", CharSet = CharSet.Auto, SetLastError = true)]",
+        "  public static extern bool EndPagePrinter(IntPtr hPrinter);",
+        "  [DllImport(\"winspool.drv\", CharSet = CharSet.Auto, SetLastError = true)]",
+        "  public static extern bool EndDocPrinter(IntPtr hPrinter);",
+        "  [DllImport(\"winspool.drv\", CharSet = CharSet.Auto, SetLastError = true)]",
+        "  public static extern bool ClosePrinter(IntPtr hPrinter);",
+        "}",
+        "'@",
+        "$doc = 'ACH Receipt' + [char]0 + 'RAW' + [char]0 + '' + [char]0 + [char]0",
+        "$docBytes = [System.Text.Encoding]::Unicode.GetBytes($doc)",
+        "if ([WinSpool]::OpenPrinter($printer, [ref]$hPrinter, [IntPtr]::Zero)) {",
+        "  if ([WinSpool]::StartDocPrinter($hPrinter, 1, $docBytes)) {",
+        "    if ([WinSpool]::StartPagePrinter($hPrinter)) {",
+        "      $written = 0",
+        "      [WinSpool]::WritePrinter($hPrinter, $bytes, $bytes.Length, [ref]$written)",
+        "      [WinSpool]::EndPagePrinter($hPrinter)",
+        "    }",
+        "    [WinSpool]::EndDocPrinter($hPrinter)",
+        "  }",
+        "  [WinSpool]::ClosePrinter($hPrinter)",
+        "}",
+      ].join("\n");
 
-        if ([Printing.WinSpool]::OpenPrinter($printer, [ref]$hPrinter, [IntPtr]::Zero)) {
-          if ([Printing.WinSpool]::StartDocPrinter($hPrinter, 1, $docInfoBytes)) {
-            if ([Printing.WinSpool]::StartPagePrinter($hPrinter)) {
-              $written = 0
-              [Printing.WinSpool]::WritePrinter($hPrinter, $bytes, $bytes.Length, [ref]$written)
-              [Printing.WinSpool]::EndPagePrinter($hPrinter)
-            }
-            [Printing.WinSpool]::EndDocPrinter($hPrinter)
-          }
-          [Printing.WinSpool]::ClosePrinter($hPrinter)
-        }
-      `;
+      const psPath = path.join(os.tmpdir(), `ach-print-${Date.now()}.ps1`);
+      fs.writeFileSync(psPath, psScript);
+      await execAsync('powershell -NoProfile -ExecutionPolicy Bypass -File "' + psPath + '"');
 
-      await execAsync(`powershell -Command "${psScript.replace(/\n/g, " ")}"`);
-
-      // Cleanup
       setTimeout(() => {
         try { fs.unlinkSync(tempFile); } catch {}
+        try { fs.unlinkSync(psPath); } catch {}
       }, 5000);
 
       return { success: true };

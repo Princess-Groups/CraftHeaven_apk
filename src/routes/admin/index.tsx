@@ -794,7 +794,7 @@ function Dashboard() {
             <Link to="/admin/orders" className="text-[10px] font-semibold text-primary hover:underline">View All</Link>
           </div>
           <div className="divide-y divide-border/50 max-h-72 overflow-y-auto">
-            {orders.length > 0 ? orders.slice(0, 8).map(o => (
+            {orders && orders.length > 0 ? orders.slice(0, 8).map(o => (
               <div key={o.id} className="px-4 py-2.5 hover:bg-muted/30 transition">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-semibold text-foreground truncate max-w-[60%]">#{o.id.slice(0, 8)}</div>
@@ -835,7 +835,7 @@ function Dashboard() {
             <Link to="/admin/purchases" className="text-[10px] font-semibold text-primary hover:underline">View All</Link>
           </div>
           <div className="divide-y divide-border/50 max-h-72 overflow-y-auto">
-            {purchases.length > 0 ? purchases.slice(0, 8).map(p => (
+            {purchases && purchases.length > 0 ? purchases.slice(0, 8).map(p => (
               <div key={p.id} className="px-4 py-2.5 hover:bg-muted/30 transition">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-semibold text-foreground truncate max-w-[60%]">
@@ -866,7 +866,7 @@ function Dashboard() {
             <Link to="/admin/inventory" className="text-[10px] font-semibold text-primary hover:underline">View All</Link>
           </div>
           <div className="divide-y divide-border/50 max-h-72 overflow-y-auto">
-            {products.length > 0 ? products.slice(0, 8).map(p => (
+            {products && products.length > 0 ? products.slice(0, 8).map(p => (
               <div key={p.id} className="px-4 py-2.5 hover:bg-muted/30 transition">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-semibold text-foreground truncate max-w-[60%]">{p.name}</div>
@@ -891,7 +891,7 @@ function Dashboard() {
       </div>
 
       {/* ===== Recent Suppliers ===== */}
-      {suppliers.length > 0 && (
+      {suppliers && suppliers.length > 0 && (
         <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <div className="flex items-center gap-2">

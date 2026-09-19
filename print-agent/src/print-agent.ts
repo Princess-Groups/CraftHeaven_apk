@@ -1,7 +1,7 @@
 import { AgentConfig, PrinterConfig, DEFAULT_CONFIG, loadConfig, saveConfig } from './config/index.js';
 import { DeviceManager } from './devices/index.js';
-import { ReceiptTemplate } from './escpos/receipt.js';
-import { LabelTemplate } from './escpos/label.js';
+import { buildReceipt, ReceiptData } from './escpos/receipt.js';
+import { buildTestLabel, buildBatchLabels } from './escpos/label.js';
 import { barcodeStickerService } from './services/barcode-sticker.js';
 import { receiptPrinterSettingsService } from './services/receipt-printer-settings.js';
 import { billingReceiptService } from './services/billing-receipt.js';
@@ -9,12 +9,12 @@ import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import express from 'express';
 
-class PrintAgent {
+export class PrintAgent {
   private config: AgentConfig;
-  private deviceManager: DeviceManager;
+  private deviceManager!: DeviceManager;
   private app: express.Express;
   private server: any;
-  private wsServer: WebSocketServer;
+  private wsServer!: WebSocketServer;
   private isRunning = false;
 
   constructor() {
@@ -36,8 +36,8 @@ class PrintAgent {
 
     // Setup web server
     this.setupHTTPHandlers();
-    this.startWebSocketServer();
     this.startHTTPServer();
+    this.startWebSocketServer();
 
     this.isRunning = true;
     console.log('Print Agent started successfully on http://localhost:' + this.config.port);
@@ -53,7 +53,7 @@ class PrintAgent {
         }
 
         const jobId = await this.enqueuePrintJob(job);
-        res.json({ jobId, status: 'queued' });
+        res.json({ jobId, status: 'completed' });
       } catch (error) {
         console.error('Print receipt error:', error);
         res.status(500).json({ error: 'Server error' });
@@ -113,7 +113,7 @@ class PrintAgent {
 
       try {
         // Build test label
-        const testLabel = LabelTemplate.buildTestLabel();
+        const testLabel = buildTestLabel();
 
         // Send to printer
         const result = await this.deviceManager.print(printerId, testLabel);
@@ -315,11 +315,14 @@ class PrintAgent {
       if (!data[field]) return null;
     }
 
-    const printerConfig = this.config.printers.find(p => p.id === data.printerId);
+    const printerConfig = this.config.printers.find(p => p.id === data.printerId) ||
+      this.deviceManager.getAllPrinters().find(p => p.id === data.printerId);
     if (!printerConfig) return null;
 
+    const isWindows = (printerConfig as any).profile === 'windows' || (printerConfig as any).type === 'windows';
+
     return {
-      printerType: printerConfig.profile === 'windows' ? 'windows' : 'escpos',
+      printerType: isWindows ? 'windows' : 'escpos',
       printerId: data.printerId,
       invoiceNumber: data.invoiceNumber,
       storeInfo: data.storeInfo,
@@ -369,7 +372,7 @@ class PrintAgent {
     const jobId = `label-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Build label data for ESC/POS
-    const labelData = LabelTemplate.buildBatchLabels(
+    const labelData = buildBatchLabels(
       job.items.map((item: any) => ({
         productName: item.productName,
         barcode: item.barcode,
@@ -386,6 +389,86 @@ class PrintAgent {
 
     // Send to printer
     const result = await this.deviceManager.print(job.printerId, labelData);
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to send to printer');
+    }
+
+    return jobId;
+  }
+
+  // Execute receipt print job immediately
+  private async enqueuePrintJob(job: any): Promise<string> {
+    const jobId = `receipt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const printerConfig =
+      this.config.printers.find(p => p.id === job.printerId) ||
+      this.deviceManager.getAllPrinters().find(p => p.id === job.printerId);
+
+    const candPaper = (printerConfig as any)?.paperWidth;
+    const paperWidth: "58mm" | "80mm" = candPaper === "58mm" || candPaper === "80mm" ? candPaper : "80mm";
+    const isWindows =
+      (printerConfig as any)?.profile === 'windows' || (printerConfig as any)?.type === 'windows';
+
+    const num = (v: any): number => {
+      const n = Number(v ?? 0);
+      return isFinite(n) ? n : 0;
+    };
+
+    const totals = {
+      subtotal: num(job.totals?.subtotal ?? job.subtotal),
+      discount: num(job.totals?.discount ?? job.discount),
+      tax: num(job.totals?.tax ?? job.tax),
+      shippingCharge: num(job.totals?.shippingCharge ?? job.shippingCharge),
+      grandTotal: num(job.totals?.grandTotal ?? job.grandTotal),
+    };
+
+    const paymentMethods: Array<"CASH" | "UPI" | "CARD" | "COD"> = ["CASH", "UPI", "CARD", "COD"];
+    const paymentMethod: "CASH" | "UPI" | "CARD" | "COD" = paymentMethods.includes(job.paymentMethod)
+      ? job.paymentMethod
+      : "CASH";
+
+    const receiptData: ReceiptData = {
+      printerType: isWindows ? "windows" : "escpos",
+      paperWidth,
+      invoiceNumber: job.invoiceNumber,
+      invoiceDate: job.invoiceDate || new Date().toISOString(),
+      storeName: job.storeInfo?.name || "",
+      storeTagline: job.storeInfo?.tagline,
+      storeGSTIN: job.storeInfo?.gstin,
+      storeAddress: Array.isArray(job.storeInfo?.address) ? job.storeInfo.address.map(String) : [],
+      storePhone: job.storeInfo?.phone,
+      storeEmail: job.storeInfo?.email,
+      storeWebsite: job.storeInfo?.website,
+      storeCIN: job.storeInfo?.cin,
+      customerName: job.customerInfo?.name,
+      customerPhone: job.customerInfo?.phone,
+      customerAddress: job.customerInfo?.address,
+      items: (job.items || []).map((item: any) => ({
+        name: item.productName || item.name || "Item",
+        variation: item.variation,
+        quantity: num(item.quantity) || 1,
+        unit: item.unit || "Nos",
+        unitPrice: num(item.unitPrice),
+        lineTotal: num(item.lineTotal),
+        gstRate: num(item.gstRate),
+        hsnCode: item.hsnCode,
+      })),
+      subtotal: totals.subtotal,
+      discount: totals.discount,
+      tax: totals.tax,
+      shippingCharge: totals.shippingCharge,
+      grandTotal: totals.grandTotal,
+      paymentMethod,
+      footerLines: job.footerLines,
+      cutPaper: job.options?.cutPaper ?? true,
+      openCashDrawer: job.options?.openCashDrawer ?? false,
+      printBarcode: job.options?.printBarcode ?? false,
+      barcodeData: job.options?.barcodeData,
+    };
+
+    const receiptBytes = buildReceipt(receiptData);
+    const result = await this.deviceManager.print(job.printerId, receiptBytes);
 
     if (!result.success) {
       throw new Error(result.error || 'Failed to send to printer');
@@ -431,18 +514,3 @@ class PrintAgent {
     });
   }
 }
-
-// Start the agent
-const agent = new PrintAgent();
-agent.start().catch(console.error);
-
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('Shutting down Print Agent...');
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  console.log('Shutting down Print Agent...');
-  process.exit(0);
-});

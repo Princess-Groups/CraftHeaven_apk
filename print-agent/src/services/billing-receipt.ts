@@ -3,7 +3,7 @@
  * Handles billing summary printing on thermal receipt printers (POSIFLOW CN811)
  */
 
-import { BillingSummary, StoreInfo } from "../types/index.js";
+import { BillingSummary, StoreInfo, ReceiptPrinterSettings } from "../types/index.js";
 import { buildReceipt, ReceiptData } from "../escpos/receipt.js";
 import { receiptPrinterSettingsService } from "./receipt-printer-settings.js";
 
@@ -85,13 +85,11 @@ export class BillingReceiptService {
         gstRate: item.gstRate,
         hsnCode: item.hsnCode,
       })),
-      totals: {
-        subtotal: billing.subtotal,
-        discount: billing.totalDiscount,
-        tax: billing.totalTax,
-        shippingCharge: billing.shippingCharge,
-        grandTotal: billing.grandTotal,
-      },
+      subtotal: billing.subtotal,
+      discount: billing.totalDiscount,
+      tax: billing.totalTax,
+      shippingCharge: billing.shippingCharge,
+      grandTotal: billing.grandTotal,
       paymentMethod: billing.paymentMethod,
       footerLines: settings.footerLines,
       cutPaper: settings.autoCut,

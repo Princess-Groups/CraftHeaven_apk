@@ -86,6 +86,20 @@ function unitPriceFor(l: BillLine): number {
   return productPrice(l.product, l.priceType === "WHOLESALE");
 }
 
+// Resolve a stored order item's unit price / line total / GST rate, falling
+// back to the product's current pricing when the order was saved with zeros
+// (older place_order versions did not fall back to cost/wholesale prices).
+function invoiceLinePrice(it: any): { unitPrice: number; lineTotal: number; gstRate: number } {
+  const storedUnit = Number(it?.unit_price ?? 0);
+  const storedLine = Number(it?.line_total ?? 0);
+  const qty = Math.max(0, Number(it?.quantity ?? 0) || 0);
+  const unitPrice = storedUnit > 0 ? storedUnit : productPrice(it?.products || {}, false);
+  const lineTotal = storedLine > 0 ? storedLine : Math.round(unitPrice * qty * 100) / 100;
+  const storedGst = Number(it?.cgst_rate ?? 0) + Number(it?.sgst_rate ?? 0);
+  const gstRate = storedGst > 0 ? storedGst : Number(it?.products?.cgst_rate ?? 0) + Number(it?.products?.sgst_rate ?? 0);
+  return { unitPrice, lineTotal, gstRate };
+}
+
 type SpecialBillingItem = {
   _id: string;
   product_name: string;
@@ -108,9 +122,11 @@ function Billing() {
   const [payment, setPayment] = useState<"CASH" | "UPI" | "CARD">("CASH");
   const [discount, setDiscount] = useState(0);
   const [shippingCharge, setShippingCharge] = useState(0);
+  const [deliveryCharge, setDeliveryCharge] = useState(0);
   const [invoice, setInvoice] = useState<null | { id: string; at: string; auto?: boolean }>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const printingRef = useRef(false);
 
   // Barcode scanner state
   const [scannerStatus, setScannerStatus] = useState<"idle" | "scanning" | "found" | "not-found">("idle");
@@ -217,27 +233,31 @@ function Billing() {
     toast.success(`Added: ${p.name}`);
   }, []);
 
-  // Handle barcode scan result - add product to bill or show error
+  // Handle barcode scan result - add product to bill (only on exact barcode/SKU
+// match, so plain typing never auto-selects a product) or show suggestions
   useEffect(() => {
     if (searchQuery.trim().length < 1) return;
     if (searchLoading) return;
 
-    if (searchResults && searchResults.length === 1) {
-      // Single product found - add it
-      addProduct(searchResults[0]);
+    const q = searchQuery.trim();
+    const single = searchResults && searchResults.length === 1 ? searchResults[0] : null;
+
+    if (single && (single.barcode === q || single.sku === q)) {
+      // Exact barcode/SKU scan - add it
+      addProduct(single);
       setScannerStatus("found");
       setScannerError("");
       // Clear after showing success briefly
       setTimeout(() => setScannerStatus("idle"), 1500);
-    } else if (searchResults && searchResults.length > 1) {
-      // Multiple matches - show suggestions
+    } else if (searchResults && searchResults.length > 0) {
+      // Matches - show suggestions, never auto-select while typing
       setShowSuggestions(true);
       setScannerStatus("found");
       setScannerError("");
     } else {
       // No product found
       setScannerStatus("not-found");
-      setScannerError(`Product not found for: "${searchQuery.trim()}"`);
+      setScannerError(`Product not found for: "${q}"`);
       setTimeout(() => setScannerStatus("idle"), 3000);
     }
   }, [searchResults, searchLoading, searchQuery, addProduct]);
@@ -530,7 +550,7 @@ function Billing() {
     [lines],
   );
 
-  const total = Math.max(0, totalFinalPrice - discount + shippingCharge);
+  const total = Math.max(0, totalFinalPrice - discount + shippingCharge + deliveryCharge);
 
   async function placeSale() {
     if (!lines.length) return toast.error("Add at least one product");
@@ -548,7 +568,7 @@ function Billing() {
       _items: items as never,
       _notes: `Billing sale · discount ₹${discount}` as never,
       _tax_type: "CGST_SGST" as never,
-      _shipping: shippingCharge,
+      _shipping: shippingCharge + deliveryCharge,
       _state: "Tamil Nadu" as never,
       _discount: discount,
     });
@@ -567,8 +587,22 @@ function Billing() {
   }
 
   // Print receipt via Print Agent
-  const printReceiptViaAgent = useCallback(async (orderId: string, invoiceDate: string) => {
-    if (!selectedPrinterId) return;
+  const printReceiptViaAgent = useCallback(async (orderId: string, invoiceDate: string): Promise<boolean> => {
+    if (printingRef.current) return false;
+
+    const printerId = selectedPrinterId ||
+      printers.find(p => /posiflow|receipt|thermal|cn\s?8/i.test(p.name))?.id ||
+      printers.find(p => p.type === "usb")?.id ||
+      printers.find(p => p.type === "serial")?.id ||
+      printers.find(p => p.type === "network")?.id ||
+      printers.find(p => p.status === "connected")?.id;
+
+    if (!printerId) {
+      toast.error("No receipt printer found. Start the Print Agent with the POSIFLOW connected, or select one in Settings → Hardware.");
+      return false;
+    }
+
+    printingRef.current = true;
 
     try {
       // Get hardware config for receipt options
@@ -578,25 +612,102 @@ function Billing() {
       const { data: order } = await supabase.from("orders").select("*").eq("id", orderId).single();
       const { data: orderItems } = await supabase
         .from("order_items")
-        .select("*, products(hsn_code)")
+        .select("*, products(hsn_code, price, discount_price, wholesale_price, total_unit_cost, purchase_price, cgst_rate, sgst_rate, igst_rate)")
         .eq("order_id", orderId);
 
       if (!order) throw new Error("Order not found");
 
-      // Build receipt items
-      const receiptItems = (orderItems ?? []).map((it: any) => ({
-        name: it.product_name,
-        variation: it.variation || undefined,
-        quantity: Number(it.quantity),
-        unit: it.unit ?? "Nos",
-        unitPrice: Number(it.unit_price),
-        lineTotal: Number(it.line_total),
-        gstRate: Number(it.cgst_rate ?? 0) + Number(it.sgst_rate ?? 0),
-        hsnCode: it.products?.hsn_code,
-      }));
+      const specialBill = parseSpecialBill(order?.notes);
+
+      let receiptItems = (orderItems ?? []).map((it: any) => {
+        const { unitPrice, lineTotal, gstRate } = invoiceLinePrice(it);
+        return {
+          name: it.product_name,
+          productName: it.product_name,
+          variation: it.variation || undefined,
+          quantity: Number(it.quantity),
+          unit: it.unit ?? "Nos",
+          unitPrice,
+          lineTotal,
+          gstRate,
+          hsnCode: it.products?.hsn_code,
+        };
+      });
+
+      let totals = {
+        subtotal: Number(order.subtotal ?? 0),
+        discount: Number(order.discount ?? 0),
+        tax: Number(order.gst_total ?? 0),
+        shippingCharge: Number(order.shipping_charges ?? 0),
+        grandTotal: Number(order.total ?? 0),
+        cgstAmount: Number(order.cgst_amount ?? 0),
+        sgstAmount: Number(order.sgst_amount ?? 0),
+        igstAmount: Number(order.igst_amount ?? 0),
+      };
+
+      let customerInfo: { name?: string; phone?: string; address?: string } | undefined;
+
+      if (specialBill) {
+        const lines = Array.isArray(specialBill.items) ? specialBill.items : [];
+        receiptItems = lines.map((l: any) => {
+          const amount = Number(l.sold_for) || 0;
+          const qty = Number(l.pieces_sold) || 0;
+          return {
+            name: l.product_name || "Item",
+            productName: l.product_name || "Item",
+            variation: undefined,
+            quantity: qty || 1,
+            unit: "Nos",
+            unitPrice: qty > 0 ? Math.round((amount / qty) * 100) / 100 : amount,
+            lineTotal: amount,
+            gstRate: Number(l.gst_rate) || 0,
+            hsnCode: undefined,
+          };
+        });
+        const specialSubtotal = Number(specialBill.sold_for_total ?? 0) || lines.reduce((s: number, l: any) => s + (Number(l.sold_for) || 0), 0);
+        const specialTax = Math.round(lines.reduce((s: number, l: any) => s + (((Number(l.sold_for) || 0) * (Number(l.gst_rate) || 0)) / 100), 0) * 100) / 100;
+        const specialDiscount = Number(specialBill.discount ?? 0);
+        const specialShipping = (Number(specialBill.delivery_charge ?? 0) || 0) + (Number(specialBill.packing_charge ?? 0) || 0);
+        totals = {
+          subtotal: specialSubtotal,
+          discount: specialDiscount,
+          tax: specialTax,
+          shippingCharge: specialShipping,
+          grandTotal: Math.max(0, specialSubtotal + specialTax - specialDiscount + specialShipping),
+          cgstAmount: 0,
+          sgstAmount: 0,
+          igstAmount: 0,
+        };
+        customerInfo = {
+          name: specialBill.client?.name,
+          phone: specialBill.client?.contact,
+          address: specialBill.client?.address,
+        };
+      } else {
+        const itemsSubtotal = Math.round(receiptItems.reduce((s: number, it: any) => s + (Number(it.lineTotal ?? 0) || 0), 0) * 100) / 100;
+        const itemsTax = Math.round(receiptItems.reduce((s: number, it: any) => s + (((Number(it.lineTotal ?? 0) || 0) * (Number(it.gstRate ?? 0) || 0)) / 100), 0) * 100) / 100;
+        const storedSubtotal = Number(order?.subtotal ?? 0);
+        const storedTax = Number(order?.gst_total ?? 0);
+        const storedTotal = Number(order?.total ?? 0);
+        const storedDiscount = Number(order?.discount ?? 0);
+        const shipping = Number(order?.shipping_charges ?? 0);
+        const subtotal = storedSubtotal > 0 ? storedSubtotal : itemsSubtotal;
+        const tax = storedSubtotal > 0 ? storedTax : itemsTax;
+        const discount = storedSubtotal > 0 ? storedDiscount : notesDiscount(order?.notes);
+        totals = {
+          subtotal,
+          discount,
+          tax,
+          shippingCharge: shipping,
+          grandTotal: storedSubtotal > 0 ? storedTotal : Math.max(0, subtotal + tax - discount + shipping),
+          cgstAmount: Number(order?.cgst_amount ?? 0),
+          sgstAmount: Number(order?.sgst_amount ?? 0),
+          igstAmount: Number(order?.igst_amount ?? 0),
+        };
+      }
 
       const printJob: ReceiptPrintJob = {
-        printerId: selectedPrinterId,
+        printerId,
         invoiceNumber: orderId.slice(0, 8).toUpperCase(),
         invoiceDate,
         storeInfo: {
@@ -610,17 +721,17 @@ function Billing() {
           cin: COMPANY.cin,
         },
         items: receiptItems,
-        totals: {
-          subtotal: Number(order.subtotal ?? 0),
-          discount: Number(order.discount ?? 0),
-          tax: Number(order.tax ?? 0),
-          shippingCharge: Number(order.shipping_charges ?? 0),
-          grandTotal: Number(order.total ?? 0),
-          cgstAmount: Number(order.cgst_amount ?? 0),
-          sgstAmount: Number(order.sgst_amount ?? 0),
-          igstAmount: Number(order.igst_amount ?? 0),
-        },
+        customerInfo,
+        totals,
         paymentMethod: order.payment_method as "CASH" | "UPI" | "CARD" | "COD",
+        subtotal: totals.subtotal,
+        discount: totals.discount,
+        tax: totals.tax,
+        shippingCharge: totals.shippingCharge,
+        grandTotal: totals.grandTotal,
+        cgstAmount: totals.cgstAmount,
+        sgstAmount: totals.sgstAmount,
+        igstAmount: totals.igstAmount,
         footerLines: [
           "Thank you for shopping with us!",
           "Goods once sold will not be taken back or exchanged."
@@ -641,28 +752,34 @@ function Billing() {
       } else {
         toast.warning("Print job queued");
       }
+      return true;
     } catch (error) {
       console.error("Print receipt error:", error);
-      toast.error("Failed to print receipt");
+      toast.error("Failed to print receipt — is the printer on and the Print Agent running?");
+      return false;
+    } finally {
+      printingRef.current = false;
     }
-  }, [selectedPrinterId, payment, hwData?.config]);
+  }, [selectedPrinterId, printers, payment, hwData?.config]);
 
   function reset() {
     setLines([]);
     setDiscount(0);
     setShippingCharge(0);
+    setDeliveryCharge(0);
     setInvoice(null);
     setSearchQuery("");
     searchRef.current?.focus();
   }
 
-  const handlePrintReceipt = useCallback(() => {
+  const handlePrintReceipt = useCallback(async (): Promise<boolean> => {
     if (invoice) {
-      printReceiptViaAgent(invoice.id, invoice.at);
+      return printReceiptViaAgent(invoice.id, invoice.at);
     }
+    return false;
   }, [invoice, printReceiptViaAgent]);
 
-  if (invoice) return <Invoice orderId={invoice.id} at={invoice.at} onDone={reset} auto={invoice.auto} selectedPrinterId={selectedPrinterId} onPrintReceipt={handlePrintReceipt} />;
+  if (invoice) return <Invoice orderId={invoice.id} at={invoice.at} onDone={reset} auto={invoice.auto} onPrintReceipt={handlePrintReceipt} />;
 
   // ---- SPECIAL BILLING MODE ----
   if (billingMode === "special") {
@@ -1365,11 +1482,10 @@ function Billing() {
                 <input
                   type="number"
                   min={0}
-                  defaultValue={0}
+                  value={deliveryCharge}
+                  onChange={(e) => setDeliveryCharge(Math.max(0, Number(e.target.value) || 0))}
                   className="w-20 rounded border border-border px-2 py-0.5 text-right text-xs"
-                  onBlur={(e) => {
-                    // This is an additional charge, can be set manually
-                  }}
+                  placeholder="0"
                 />
               </div>
 
@@ -1636,20 +1752,38 @@ function Billing() {
 }
 
 // ---------- Invoice component (same as POS) ----------
+function parseSpecialBill(notes: any): any {
+  if (typeof notes !== "string") return null;
+  try {
+    const parsed = JSON.parse(notes);
+    if (parsed && parsed.type === "SPECIAL_BILLING") return parsed;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+// Recover the discount a sale was charged with from the billing notes when the
+// stored order discount is zero (older place_order versions clamped it against
+// a subtotal that was saved as 0/NULL).
+function notesDiscount(notes: any): number {
+  if (typeof notes !== "string") return 0;
+  const m = notes.match(/discount\s*₹\s*([\d,.]+)/);
+  return m ? Math.max(0, Number(m[1].replace(/,/g, "")) || 0) : 0;
+}
+
 function Invoice({
   orderId,
   at,
   onDone,
   auto,
-  selectedPrinterId,
   onPrintReceipt,
 }: {
   orderId: string;
   at: string;
   onDone: () => void;
   auto?: boolean;
-  selectedPrinterId?: string;
-  onPrintReceipt?: () => Promise<void>;
+  onPrintReceipt?: () => Promise<boolean>;
 }) {
   const { data } = useQuery({
     queryKey: ["invoice", orderId],
@@ -1657,7 +1791,7 @@ function Invoice({
       const { data: order } = await supabase.from("orders").select("*").eq("id", orderId).single();
       const { data: items } = await supabase
         .from("order_items")
-        .select("*, products(hsn_code)")
+        .select("*, products(hsn_code, price, discount_price, wholesale_price, total_unit_cost, purchase_price, cgst_rate, sgst_rate, igst_rate)")
         .eq("order_id", orderId);
       return { order, items };
     },
@@ -1680,8 +1814,80 @@ function Invoice({
     }
   }, [auto, data]);
 
-  const total = Number(order?.total ?? 0);
   const invoiceNo = orderId.slice(0, 8).toUpperCase();
+
+  const [printState, setPrintState] = useState<"idle" | "printing" | "success" | "error">("idle");
+  const [printError, setPrintError] = useState("");
+
+  const handleDirectPrint = useCallback(async () => {
+    if (!onPrintReceipt || printState === "printing") return;
+    setPrintState("printing");
+    setPrintError("");
+    try {
+      const ok = await onPrintReceipt();
+      if (ok) {
+        setPrintState("success");
+      } else {
+        setPrintError("Could not reach the printer. Make sure the POSIFLOW is on and connected, and the Print Agent is running, then retry.");
+        setPrintState("error");
+      }
+    } catch {
+      setPrintError("Could not reach the printer. Make sure the POSIFLOW is on and connected, and the Print Agent is running, then retry.");
+      setPrintState("error");
+    }
+  }, [onPrintReceipt, printState]);
+
+  const specialBill = parseSpecialBill(order?.notes);
+  let displayItems = items.map((it: any) => {
+    const { unitPrice, lineTotal, gstRate } = invoiceLinePrice(it);
+    return { ...it, unit_price: unitPrice, line_total: lineTotal, cgst_rate: gstRate, sgst_rate: 0, igst_rate: 0 };
+  });
+  let subtotal = Number(order?.subtotal ?? 0);
+  let tax = Number(order?.gst_total ?? 0);
+  let discountAmt = Number(order?.discount ?? 0);
+  let shippingAmt = Number(order?.shipping_charges ?? 0);
+  let total = Number(order?.total ?? 0);
+
+  if (specialBill) {
+    const lines = Array.isArray(specialBill.items) ? specialBill.items : [];
+    subtotal = Number(specialBill.sold_for_total ?? 0) || lines.reduce((s: number, l: any) => s + (Number(l.sold_for) || 0), 0);
+    tax = Math.round(lines.reduce((a: number, l: any) => a + (((Number(l.sold_for) || 0) * (Number(l.gst_rate) || 0)) / 100), 0) * 100) / 100;
+    discountAmt = Number(specialBill.discount ?? 0);
+    shippingAmt = (Number(specialBill.delivery_charge ?? 0) || 0) + (Number(specialBill.packing_charge ?? 0) || 0);
+    total = Math.max(0, subtotal + tax - discountAmt + shippingAmt);
+    displayItems = lines.map((l: any) => {
+      const amount = Number(l.sold_for) || 0;
+      const qty = Number(l.pieces_sold) || 0;
+      return {
+        product_name: l.product_name || "Item",
+        variation: undefined,
+        unit: "Nos",
+        quantity: qty || 1,
+        unit_price: qty > 0 ? Math.round((amount / qty) * 100) / 100 : amount,
+        cgst_rate: Number(l.gst_rate) || 0,
+        sgst_rate: 0,
+        igst_rate: 0,
+        line_total: amount,
+        products: null,
+      };
+    });
+  } else {
+    const storedSubtotal = Number(order?.subtotal ?? 0);
+    const storedTax = Number(order?.gst_total ?? 0);
+    const storedTotal = Number(order?.total ?? 0);
+    const storedDiscount = Number(order?.discount ?? 0);
+    if (storedSubtotal > 0) {
+      subtotal = storedSubtotal;
+      tax = storedTax;
+      discountAmt = storedDiscount;
+      total = storedTotal;
+    } else {
+      discountAmt = storedDiscount > 0 ? storedDiscount : notesDiscount(order?.notes);
+      subtotal = Math.round(displayItems.reduce((s: number, it: any) => s + (Number(it.line_total ?? 0) || 0), 0) * 100) / 100;
+      tax = Math.round(displayItems.reduce((s: number, it: any) => s + (((Number(it.line_total ?? 0) || 0) * (Number(it.cgst_rate ?? 0) + Number(it.sgst_rate ?? 0))) / 100), 0) * 100) / 100;
+      total = Math.max(0, subtotal + tax - discountAmt + shippingAmt);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-md">
@@ -1696,17 +1902,40 @@ function Invoice({
           >
             <Printer className="h-3.5 w-3.5" /> Print (Browser)
           </button>
-          {selectedPrinterId && onPrintReceipt && (
+          {onPrintReceipt && (
             <button
-              onClick={onPrintReceipt}
-              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition"
-              title="Print directly to thermal receipt printer (POSIFLOW CN811)"
+              onClick={handleDirectPrint}
+              disabled={printState === "printing"}
+              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              title="Print directly to the POSIFLOW CN811 thermal printer"
             >
-              <Printer className="h-3.5 w-3.5" /> Print Bill
+              {printState === "printing" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Printer className="h-3.5 w-3.5" />
+              )}
+              {printState === "printing" ? "Printing…" : printState === "success" ? "Printed" : printState === "error" ? "Retry Print" : "Print Bill"}
             </button>
           )}
         </div>
       </div>
+      {printState === "error" && (
+        <div className="no-print mb-3 flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          <span className="flex items-center gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {printError}
+          </span>
+          <button onClick={handleDirectPrint} className="shrink-0 rounded-md bg-rose-600 px-3 py-1 font-semibold text-white hover:bg-rose-700">
+            Retry
+          </button>
+        </div>
+      )}
+      {printState === "success" && (
+        <div className="no-print mb-3 flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+          Receipt sent to the printer.
+        </div>
+      )}
       <div className="print-area rounded-xl border border-border bg-white p-6 shadow-sm print:border-0 print:shadow-none">
         <div className="ind">
           <div className="hdr">
@@ -1748,7 +1977,7 @@ function Invoice({
               </tr>
             </thead>
             <tbody>
-              {items.map((it: any) => {
+              {displayItems.map((it: any) => {
                 const taxPct = Number(it.cgst_rate ?? 0) + Number(it.sgst_rate ?? 0);
                 const hsn = it.products?.hsn_code ?? "";
                 return (
@@ -1768,12 +1997,12 @@ function Invoice({
             </tbody>
           </table>
           <div className="sep" />
-          <div className="row"><span>Subtotal</span><span>{Number(order?.subtotal ?? 0).toFixed(2)}</span></div>
-          {Number(order?.discount ?? 0) > 0 && (
-            <div className="row"><span>Discount</span><span>-{Number(order?.discount ?? 0).toFixed(2)}</span></div>
+          <div className="row"><span>Subtotal</span><span>{subtotal.toFixed(2)}</span></div>
+          {discountAmt > 0 && (
+            <div className="row"><span>Discount</span><span>-{discountAmt.toFixed(2)}</span></div>
           )}
-          {Number(order?.shipping_charges ?? 0) > 0 && (
-            <div className="row"><span>Shipping Charge</span><span>{Number(order?.shipping_charges ?? 0).toFixed(2)}</span></div>
+          {shippingAmt > 0 && (
+            <div className="row"><span>Shipping Charge</span><span>{shippingAmt.toFixed(2)}</span></div>
           )}
           <div className="sep" />
           <div className="row tt"><span>Total</span><span>{total.toFixed(2)}</span></div>
