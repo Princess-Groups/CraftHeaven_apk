@@ -107,9 +107,10 @@ function Inventory() {
     return list;
   }, [products, filter, searchQ]);
 
-  // One-click Re-Stock: directly add 1 unit to a product's stock. Variant
-  // products keep color_variations in sync with the top-level stock.
+  // One-click Re-Stock: directly add the product's Minimum Stock worth of units.
+  // Variant products keep color_variations in sync with the top-level stock.
   async function restock(id: string, product: any) {
+    const addQty = Math.max(1, Math.round(Number(product.reorder_level ?? 5) || 5));
     const cur: any[] = Array.isArray(product.color_variations) ? product.color_variations : [];
     const hasVars = cur.some((v: any) => v?.color || v?.color_code);
     let payload: any;
@@ -126,16 +127,16 @@ function Inventory() {
         }
       });
       const next = cur.map((v: any, i: number) =>
-        i === pick ? { ...v, remaining: Math.max(0, (Number(v.remaining) || 0) + 1) } : v
+        i === pick ? { ...v, remaining: Math.max(0, (Number(v.remaining) || 0) + addQty) } : v
       );
       const remainSum = next.reduce((s: number, v: any) => s + (Number(v.remaining) || 0), 0);
       payload = { color_variations: next, stock: remainSum, is_available: remainSum > 0 };
     } else {
-      payload = { stock: (Number(product.stock) || 0) + 1, is_available: true };
+      payload = { stock: (Number(product.stock) || 0) + addQty, is_available: true };
     }
     const { error } = await supabase.from("products").update(payload).eq("id", id);
     if (error) return toast.error(error.message);
-    toast.success(`Restocked: ${product.name} (+1)`);
+    toast.success(`Restocked: ${product.name} (+${addQty})`);
     qc.invalidateQueries({ queryKey: ["inv"] });
   }
 
