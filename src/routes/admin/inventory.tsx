@@ -23,6 +23,12 @@ export const Route = createFileRoute("/admin/inventory")({
   component: Inventory,
 });
 
+function retailPrice(p: any): number {
+  const price = Number(p.price ?? 0);
+  if (price > 0) return price;
+  return Number(p.total_unit_cost ?? 0) > 0 ? Number(p.total_unit_cost) : Number(p.purchase_price ?? 0);
+}
+
 function Inventory() {
   const qc = useQueryClient();
   const [view, setView] = useState<"alerts" | "inventory">("alerts");
@@ -38,7 +44,7 @@ function Inventory() {
       (
         await supabase
           .from("products")
-          .select("id,name,stock,unit,reorder_level,is_available,sku,barcode,purchase_price,price,category_id,image_urls,color_variations,categories(name)")
+          .select("id,name,stock,unit,reorder_level,is_available,sku,barcode,purchase_price,total_unit_cost,price,category_id,image_urls,color_variations,categories(name)")
           .order("stock", { ascending: true })
       ).data ?? [],
   });
@@ -382,7 +388,7 @@ function Inventory() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Retail Price</span>
-                      <span className="font-semibold">₹{Number(p.price ?? 0).toFixed(0)}</span>
+                      <span className="font-semibold">₹{retailPrice(p).toFixed(0)}</span>
                     </div>
                   </div>
 
@@ -492,7 +498,7 @@ function Inventory() {
                       <td className="p-3 text-right text-xs text-muted-foreground">
                         {p.purchase_price != null ? `₹${Number(p.purchase_price).toFixed(0)}` : "—"}
                       </td>
-                      <td className="p-3 text-right text-sm font-semibold">₹{Number(p.price ?? 0).toFixed(0)}</td>
+                      <td className="p-3 text-right text-sm font-semibold">₹{retailPrice(p).toFixed(0)}</td>
                       <td className="p-3">
                         <div className="flex items-center gap-2 justify-center">
                           <input
