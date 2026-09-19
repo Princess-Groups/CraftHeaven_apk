@@ -187,13 +187,14 @@ function calcRow(r: ProductRow): ProductRow {
   // Other charges are a flat total for the product line — spread them across the quantity
   const otherCharges = Number(r.other_charges) || 0;
   const perUnitOther = qty > 0 ? Math.round((otherCharges / qty) * 100) / 100 : 0;
-  // Delivery & Packing charges entered per unit — the totals are qty × per-unit.
-  // If qty is 0 but a charge was entered, fall back to the charge itself so the
-  // totals never wrongly collapse to ₹0.
-  const perUnitPacking = Number(r.delivery_packing_charge) || 0;
-  const perUnitDelivery = Number(r.delivery_charge) || 0;
-  const totalDeliveryPacking = qty > 0 ? Math.round(perUnitPacking * qty * 100) / 100 : perUnitPacking;
-  const totalDelivery = qty > 0 ? Math.round(perUnitDelivery * qty * 100) / 100 : perUnitDelivery;
+  // Packing & Delivery charges are entered as a TOTAL for the product line and are
+  // divided equally across the quantity (per unit), so each unit shares the cost evenly.
+  const totalEnteredPacking = Number(r.delivery_packing_charge) || 0;
+  const totalEnteredDelivery = Number(r.delivery_charge) || 0;
+  const perUnitPacking = qty > 0 ? Math.round((totalEnteredPacking / qty) * 100) / 100 : 0;
+  const perUnitDelivery = qty > 0 ? Math.round((totalEnteredDelivery / qty) * 100) / 100 : 0;
+  const totalDeliveryPacking = totalEnteredPacking;
+  const totalDelivery = totalEnteredDelivery;
   const perUnitTotalCharges = perUnitPacking + perUnitDelivery;
   // Single product cost = unit price + per-unit packing & freight + per-unit
   // packing + per-unit delivery + per-unit other charges
@@ -2219,8 +2220,8 @@ function Purchases() {
     { key: "minimum_stock", label: "Minimum Stock", type: "number" },
     { key: "current_stock", label: "Current Stock", type: "number" },
     { key: "rack_location", label: "Rack Location", type: "text" },
-    { key: "delivery_packing_charge", label: "Packing Charge / Unit (₹)", type: "number" },
-    { key: "delivery_charge", label: "Delivery Charge / Unit (₹)", type: "number" },
+    { key: "delivery_packing_charge", label: "Packing Charge Total (₹)", type: "number" },
+    { key: "delivery_charge", label: "Delivery Charge Total (₹)", type: "number" },
     { key: "per_unit_delivery_packing", label: "Packing Charge / Unit", type: "number", ro: true },
     { key: "per_unit_delivery", label: "Delivery Charge / Unit", type: "number", ro: true },
     { key: "per_unit_total_charges", label: "Packing + Delivery / Unit", type: "number", ro: true },
