@@ -3157,6 +3157,13 @@ function Purchases() {
               )}
             </div>
 
+            {/* ===== SINGLE PRODUCT DETAILS ===== */}
+            <div className="pt-3">
+              <div className="flex items-center justify-between px-4 py-2 bg-muted border-b border-border">
+                <h3 className="text-sm font-bold text-muted-foreground">Single Product Details</h3>
+              </div>
+            </div>
+
             {/* ===== SALES SUMMARY ===== */}
             {activeRow && activeRow.name && (
               <div className="mt-4 pt-3 border-t border-border">
