@@ -83,6 +83,9 @@ type ProductRow = {
   per_unit_delivery_packing: number;
   per_unit_delivery: number;
   per_unit_total_charges: number;
+  total_delivery_packing: number;
+  total_delivery: number;
+  total_delivery_packing_charges: number;
   re_stock: number;
   gst_rate: number;
   gst_is_custom: boolean;
@@ -144,6 +147,9 @@ const blankRow = (serial: number): ProductRow => ({
   per_unit_delivery_packing: 0,
   per_unit_delivery: 0,
   per_unit_total_charges: 0,
+  total_delivery_packing: 0,
+  total_delivery: 0,
+  total_delivery_packing_charges: 0,
   re_stock: 0,
   gst_rate: 0,
   gst_is_custom: false,
@@ -176,18 +182,33 @@ function calcRow(r: ProductRow): ProductRow {
   const total_price = qty * up;
   const perUnitPF = Number(r.purchase_packing_freight_charge) || 0;
   const totalPF = Math.round(perUnitPF * qty * 100) / 100;
-  const total_unit_cost = up + perUnitPF + Number(r.other_charges);
+  // Other charges are a flat total for the product line — spread them across the quantity
+  const otherCharges = Number(r.other_charges) || 0;
+  const perUnitOther = qty > 0 ? Math.round((otherCharges / qty) * 100) / 100 : 0;
+  // Delivery & Packing charges entered per unit — the totals are qty × per-unit.
+  // If qty is 0 but a charge was entered, fall back to the charge itself so the
+  // totals never wrongly collapse to ₹0.
+  const perUnitPacking = Number(r.delivery_packing_charge) || 0;
+  const perUnitDelivery = Number(r.delivery_charge) || 0;
+  const totalDeliveryPacking = qty > 0 ? Math.round(perUnitPacking * qty * 100) / 100 : perUnitPacking;
+  const totalDelivery = qty > 0 ? Math.round(perUnitDelivery * qty * 100) / 100 : perUnitDelivery;
+  const perUnitTotalCharges = perUnitPacking + perUnitDelivery;
+  // Single product cost = unit price + per-unit packing & freight + per-unit
+  // packing + per-unit delivery + per-unit other charges
+  const total_unit_cost = up + perUnitPF + perUnitPacking + perUnitDelivery + perUnitOther;
   const final_purchase_cost = total_unit_cost * qty;
 
-  // Auto-calculate selling prices from profit percentages when provided
+  // Auto-calculate per-unit selling prices from profit percentages when provided
   const retailProfitPct = Number(r.retail_profit_pct) || 0;
   const wholesaleProfitPct = Number(r.wholesale_profit_pct) || 0;
-  const retail_selling_price = retailProfitPct > 0 && final_purchase_cost > 0
-    ? Math.round(final_purchase_cost * (1 + retailProfitPct / 100) * 100) / 100
-    : Number(r.retail_selling_price) || 0;
-  const wholesale_price = wholesaleProfitPct > 0 && final_purchase_cost > 0
-    ? Math.round(final_purchase_cost * (1 + wholesaleProfitPct / 100) * 100) / 100
-    : Number(r.wholesale_price) || 0;
+  const retail_selling_price =
+    retailProfitPct > 0 && total_unit_cost > 0
+      ? Math.round(total_unit_cost * (1 + retailProfitPct / 100) * 100) / 100
+      : Number(r.retail_selling_price) || 0;
+  const wholesale_price =
+    wholesaleProfitPct > 0 && total_unit_cost > 0
+      ? Math.round(total_unit_cost * (1 + wholesaleProfitPct / 100) * 100) / 100
+      : Number(r.wholesale_price) || 0;
 
   const rsp = retail_selling_price;
   const profit_pct = rsp > 0 && total_unit_cost > 0 ? ((rsp - total_unit_cost) / total_unit_cost) * 100 : 0;
@@ -202,14 +223,7 @@ function calcRow(r: ProductRow): ProductRow {
     ? Math.round(final_purchase_cost * discountPct / 100 * 100) / 100
     : discountAmount;
 
-  // Delivery & Packing charge distribution across quantity
-  const deliveryPackingCharge = Number(r.delivery_packing_charge) || 0;
-  const deliveryCharge = Number(r.delivery_charge) || 0;
-  const perUnitDeliveryPacking = qty > 0 ? Math.round(deliveryPackingCharge / qty * 100) / 100 : 0;
-  const perUnitDelivery = qty > 0 ? Math.round(deliveryCharge / qty * 100) / 100 : 0;
-  const perUnitTotalCharges = perUnitDeliveryPacking + perUnitDelivery;
-
-  const total_final = final_purchase_cost + deliveryPackingCharge + deliveryCharge + gst - discount;
+  const total_final = final_purchase_cost + totalDeliveryPacking + totalDelivery + gst - discount;
 
   return {
     ...r,
@@ -220,9 +234,12 @@ function calcRow(r: ProductRow): ProductRow {
     total_unit_cost,
     final_purchase_cost,
     slot_charge_per_product: r.slot_id ? totalPF : r.slot_charge_per_product,
-    per_unit_delivery_packing: perUnitDeliveryPacking,
+    per_unit_delivery_packing: perUnitPacking,
     per_unit_delivery: perUnitDelivery,
     per_unit_total_charges: perUnitTotalCharges,
+    total_delivery_packing: totalDeliveryPacking,
+    total_delivery: totalDelivery,
+    total_delivery_packing_charges: totalDeliveryPacking + totalDelivery,
     retail_selling_price,
     wholesale_price,
     profit_per_piece_pct: Math.round(profit_pct * 100) / 100,
@@ -1712,8 +1729,10 @@ function Purchases() {
         total_packing_freight: acc.total_packing_freight + (r.slot_charge_per_product || 0),
         total_quantity: acc.total_quantity + (Number(r.quantity) || 0),
         total_other_charges: acc.total_other_charges + (Number(r.other_charges) || 0),
+        total_delivery_packing: acc.total_delivery_packing + (Number(r.total_delivery_packing) || 0),
+        total_delivery: acc.total_delivery + (Number(r.total_delivery) || 0),
       }),
-      { total_price: 0, final_purchase_cost: 0, total_final: 0, gst: 0, discount: 0, total_packing_freight: 0, total_quantity: 0, total_other_charges: 0 },
+      { total_price: 0, final_purchase_cost: 0, total_final: 0, gst: 0, discount: 0, total_packing_freight: 0, total_quantity: 0, total_other_charges: 0, total_delivery_packing: 0, total_delivery: 0 },
     );
   }, [calculatedRows]);
 
@@ -1902,6 +1921,10 @@ function Purchases() {
         sku: row.barcode || null,
         category_id: row.category_id || null,
         price: Number(row.retail_selling_price) || 0,
+        wholesale_price: Number(row.wholesale_price) || 0,
+        retail_profit_pct: Number(row.retail_profit_pct) || 0,
+        wholesale_profit_pct: Number(row.wholesale_profit_pct) || 0,
+        total_unit_cost: Number(row.total_unit_cost) || 0,
         purchase_price: Number(row.unit_price) || 0,
         stock: Math.round(Number(row.current_stock) || 0),
         reorder_level: Math.round(Number(row.minimum_stock) || 5),
@@ -1997,6 +2020,10 @@ function Purchases() {
         material: r.material || null,
         unit_cost: Number(r.unit_price) || 0,
         selling_price: Number(r.retail_selling_price) || 0,
+        wholesale_price: Number(r.wholesale_price) || 0,
+        retail_profit_pct: Number(r.retail_profit_pct) || 0,
+        wholesale_profit_pct: Number(r.wholesale_profit_pct) || 0,
+        total_unit_cost: Number(r.total_unit_cost) || 0,
         quantity: Math.round(Number(r.quantity) || 1),
         unit: r.per_packet_unit || "Nos",
         slot_number: r.slot_id || null,
@@ -2182,11 +2209,14 @@ function Purchases() {
     { key: "minimum_stock", label: "Minimum Stock", type: "number" },
     { key: "current_stock", label: "Current Stock", type: "number" },
     { key: "rack_location", label: "Rack Location", type: "text" },
-    { key: "delivery_packing_charge", label: "Packing Charge (Total)", type: "number" },
-    { key: "delivery_charge", label: "Delivery Charge (Total)", type: "number" },
+    { key: "delivery_packing_charge", label: "Packing Charge / Unit (₹)", type: "number" },
+    { key: "delivery_charge", label: "Delivery Charge / Unit (₹)", type: "number" },
     { key: "per_unit_delivery_packing", label: "Packing Charge / Unit", type: "number", ro: true },
     { key: "per_unit_delivery", label: "Delivery Charge / Unit", type: "number", ro: true },
-    { key: "per_unit_total_charges", label: "Total Charges / Unit", type: "number", ro: true },
+    { key: "per_unit_total_charges", label: "Packing + Delivery / Unit", type: "number", ro: true },
+    { key: "total_delivery_packing", label: "Packing Charge (Total)", type: "number", ro: true },
+    { key: "total_delivery", label: "Delivery Charge (Total)", type: "number", ro: true },
+    { key: "total_delivery_packing_charges", label: "Packing + Delivery (Total)", type: "number", ro: true },
     { key: "re_stock", label: "Re Stock", type: "number" },
     { key: "gst_rate", label: "GST %", type: "select-gst" },
     { key: "gst_amount", label: "GST Amount", type: "number", ro: true },
@@ -2559,6 +2589,32 @@ function Purchases() {
           />
         );
       case "number":
+        // Discount Amount is user-entered when discount type is "amount"
+        if (field === "discount_amount" && row.discount_type === "amount") {
+          return (
+            <input
+              type="number"
+              defaultValue={String(row[field] ?? "")}
+              onChange={(e) => {
+                const v = Number(e.target.value) || 0;
+                patchRow(idx, { [field]: v });
+              }}
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-right"
+              step="0.01"
+            />
+          );
+        }
+        // Discount % only applies when discount type is "percentage"
+        if (field === "discount_pct" && row.discount_type === "amount") {
+          return (
+            <input
+              type="number"
+              value={String(row[field] ?? "")}
+              readOnly
+              className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm font-semibold text-right outline-none cursor-default"
+            />
+          );
+        }
         if (fieldDef.ro) {
           return (
             <input
@@ -3365,6 +3421,14 @@ function Purchases() {
                   <div className="space-y-1">
                     <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Packing & Freight</Label>
                     <div className="text-lg font-bold text-primary">₹{grandTotals.total_packing_freight.toFixed(2)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Packing Charge</Label>
+                    <div className="text-lg font-bold text-foreground">₹{grandTotals.total_delivery_packing.toFixed(2)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Delivery Charge</Label>
+                    <div className="text-lg font-bold text-foreground">₹{grandTotals.total_delivery.toFixed(2)}</div>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total GST</Label>

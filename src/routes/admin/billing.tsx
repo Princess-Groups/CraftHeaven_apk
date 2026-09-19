@@ -41,6 +41,9 @@ type Product = {
   name: string;
   price: number;
   discount_price: number | null;
+  wholesale_price: number | null | undefined;
+  purchase_price: number | null | undefined;
+  total_unit_cost: number | null | undefined;
   stock: number;
   unit: string;
   barcode: string | null;
@@ -62,7 +65,26 @@ type BillLine = {
   color: string;
   colorImage: string;
   gstOverride: number | null; // per-line manual override, null = use product's GST
+  priceType: "RETAIL" | "WHOLESALE";
 };
+
+// Best available price for a product: retail price first, else the unit cost
+// stored by purchase entry (so products saved with price = 0 still bill/shoow the
+// correct amount).
+function productPrice(p: Product, wholesale = false): number {
+  if (wholesale && Number(p.wholesale_price ?? 0) > 0) return Number(p.wholesale_price);
+  const retail = Number(p.discount_price ?? p.price);
+  if (retail > 0) return retail;
+  const cost = Number(p.total_unit_cost ?? 0);
+  if (cost > 0) return cost;
+  return Number(p.purchase_price ?? 0);
+}
+
+// Effective unit price for a bill line: wholesale lines bill at the product's
+// wholesale price (fall back to retail/cost when none is set).
+function unitPriceFor(l: BillLine): number {
+  return productPrice(l.product, l.priceType === "WHOLESALE");
+}
 
 type SpecialBillingItem = {
   _id: string;
@@ -82,7 +104,6 @@ type SpecialBillingClient = {
 function Billing() {
   const qc = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchType, setSearchType] = useState<"barcode" | "name">("barcode");
   const [lines, setLines] = useState<BillLine[]>([]);
   const [payment, setPayment] = useState<"CASH" | "UPI" | "CARD">("CASH");
   const [discount, setDiscount] = useState(0);
@@ -138,24 +159,24 @@ function Billing() {
       }));
   }
 
-  // Search products by barcode or name
+  // Search products by barcode or name (fires on every keystroke)
   const { data: searchResults, isLoading: searchLoading } = useQuery({
-    queryKey: ["billing-search", searchQuery, searchType],
+    queryKey: ["billing-search", searchQuery],
     queryFn: async () => {
       if (!searchQuery.trim()) return [];
+      const q = searchQuery.trim();
       let query = supabase
         .from("products")
         .select(
-          "id,name,price,discount_price,stock,unit,barcode,sku,gst_rate,image_urls,cgst_rate,sgst_rate,igst_rate,category_id,color,material,color_variations",
+          "id,name,price,discount_price,wholesale_price,purchase_price,total_unit_cost,stock,unit,barcode,sku,gst_rate,image_urls,cgst_rate,sgst_rate,igst_rate,category_id,color,material,color_variations",
         )
-        .limit(10);
-      if (searchType === "barcode") {
-        query = query.or(`barcode.eq.${searchQuery.trim()},sku.eq.${searchQuery.trim()}`);
-      } else {
-        query = query.ilike("name", `%${searchQuery.trim()}%`);
-      }
+        .limit(50);
+      // Unified type-to-search: match product name, barcode or SKU as a substring.
+      query = query.or(
+        `name.ilike.%${q}%,barcode.ilike.%${q}%,sku.ilike.%${q}%,material.ilike.%${q}%`,
+      );
       const { data } = await query;
-      return (data ?? []) as Product[];
+      return (data ?? []) as unknown as Product[];
     },
     enabled: searchQuery.trim().length > 0,
   });
@@ -186,6 +207,7 @@ function Billing() {
           color: firstVar?.color ?? p.color ?? "",
           colorImage: firstVar?.image_url ?? p.image_urls?.[0] ?? "",
           gstOverride: null,
+          priceType: "RETAIL",
         },
       ];
     });
@@ -197,7 +219,7 @@ function Billing() {
 
   // Handle barcode scan result - add product to bill or show error
   useEffect(() => {
-    if (searchType !== "barcode" || searchQuery.trim().length < 3) return;
+    if (searchQuery.trim().length < 1) return;
     if (searchLoading) return;
 
     if (searchResults && searchResults.length === 1) {
@@ -215,11 +237,10 @@ function Billing() {
     } else {
       // No product found
       setScannerStatus("not-found");
-      setScannerError(`Product not found for barcode: "${searchQuery.trim()}"`);
-      toast.error(`Product not found: "${searchQuery.trim()}"`);
+      setScannerError(`Product not found for: "${searchQuery.trim()}"`);
       setTimeout(() => setScannerStatus("idle"), 3000);
     }
-  }, [searchResults, searchLoading, searchType, searchQuery, addProduct]);
+  }, [searchResults, searchLoading, searchQuery, addProduct]);
 
   // Categories query for GST auto-assignment
   const { data: categories } = useQuery({
@@ -377,7 +398,6 @@ function Billing() {
           e.preventDefault();
           const barcode = buf.trim();
           setSearchQuery(barcode);
-          setSearchType("barcode");
           setLastScannedBarcode(barcode);
           setScannerStatus("scanning");
 
@@ -466,14 +486,14 @@ function Billing() {
   }, []);
 
   const subtotal = useMemo(
-    () => lines.reduce((s, l) => s + Number(l.product.discount_price ?? l.product.price) * l.qty, 0),
+    () => lines.reduce((s, l) => s + unitPriceFor(l) * l.qty, 0),
     [lines],
   );
 
   const gst = useMemo(() => {
     let total = 0;
     for (const l of lines) {
-      const line = Number(l.product.discount_price ?? l.product.price) * l.qty;
+      const line = unitPriceFor(l) * l.qty;
       const rate = getEffectiveGst(l);
       total += calcGstAmount(line, rate);
     }
@@ -483,7 +503,7 @@ function Billing() {
   // Per-line final prices
   const lineDetails = useMemo(() => {
     return lines.map((l) => {
-      const unitPrice = Number(l.product.discount_price ?? l.product.price);
+      const unitPrice = unitPriceFor(l);
       const lineSubtotal = unitPrice * l.qty;
       const gstRate = getEffectiveGst(l);
       const gstAmount = calcGstAmount(lineSubtotal, gstRate);
@@ -518,6 +538,7 @@ function Billing() {
       product_id: l.product.id,
       quantity: l.qty,
       variation: l.color,
+      price_type: l.priceType,
     }));
     const { data, error } = await supabase.rpc("place_order", {
       _channel: "IN_STORE" as never,
@@ -914,6 +935,78 @@ function Billing() {
   }
 
   // ---- NORMAL BILLING MODE ----
+
+  // Live type-to-search results list (each result is a clickable product tile)
+  const searchTriggerList: React.ReactElement[] = [];
+  if (searchQuery.trim()) {
+    (searchResults ?? []).forEach((p) => {
+      const price = productPrice(p);
+      const vars = mapVariations(p.color_variations).filter((v) => v.color || v.color_code);
+      const totalVariantQty = vars.reduce((s, v) => s + v.quantity, 0);
+      const totalVariantSold = vars.reduce((s, v) => s + v.sold, 0);
+      const totalVariantRemaining = vars.reduce((s, v) => s + (v.remaining ?? (v.quantity - v.sold)), 0);
+      const hasVariants = vars.length > 0;
+      const stockDisplay = hasVariants ? totalVariantRemaining : p.stock;
+      const isOutOfStock = stockDisplay <= 0;
+      searchTriggerList.push(
+        <button
+          key={p.id}
+          onClick={() => addProduct(p)}
+          disabled={isOutOfStock}
+          className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-secondary-soft text-left transition ${isOutOfStock ? "opacity-50" : ""}`}
+        >
+          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">
+            {p.image_urls?.[0] ? (
+              <img src={p.image_urls[0]} alt={p.name} className="h-full w-full object-cover" />
+            ) : null}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-foreground">{p.name}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              {p.barcode || "No barcode"} · {p.sku || ""}
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-sm font-bold text-foreground">₹{price}</span>
+              {hasVariants && (
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">
+                  {vars.length} variant{vars.length !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+            {hasVariants && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {vars.slice(0, 4).map((v) => {
+                  const rem = v.remaining ?? (v.quantity - v.sold);
+                  const vOut = rem <= 0 && v.quantity > 0;
+                  const vLow = rem > 0 && rem <= 2;
+                  return (
+                    <span
+                      key={v.color + v.color_code}
+                      className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold ${
+                        vOut ? "bg-rose-50 text-rose-600" : vLow ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
+                      }`}
+                    >
+                      {v.image_url ? <img src={v.image_url} alt="" className="h-2.5 w-2.5 rounded-full object-cover" /> : null}
+                      {v.color || v.color_code}
+                      {v.color_code ? <span className="opacity-60">({v.color_code})</span> : null}
+                      <span className="opacity-60">·{rem}</span>
+                    </span>
+                  );
+                })}
+                {vars.length > 4 && <span className="text-[8px] text-muted-foreground">+{vars.length - 4}</span>}
+              </div>
+            )}
+          </div>
+          <div className="text-right shrink-0">
+            <span className={`text-xs font-semibold ${isOutOfStock ? "text-rose-600" : "text-emerald-600"}`}>
+              {isOutOfStock ? "Out of stock" : `${stockDisplay} left`}
+            </span>
+          </div>
+        </button>,
+      );
+    });
+  }
+
   return (
     <>
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
@@ -940,21 +1033,9 @@ function Billing() {
           onSubmit={onSearchSubmit}
           className="rounded-xl border border-border bg-white p-3 shadow-sm"
         >
-          <div className="flex items-center gap-2 mb-2">
-            <button
-              type="button"
-              onClick={() => { setSearchType("barcode"); setSearchQuery(""); searchRef.current?.focus(); }}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${searchType === "barcode" ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}
-            >
-              <ScanBarcode className="inline h-3.5 w-3.5 mr-1" /> Barcode
-            </button>
-            <button
-              type="button"
-              onClick={() => { setSearchType("name"); setSearchQuery(""); searchRef.current?.focus(); }}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${searchType === "name" ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}
-            >
-              <Search className="inline h-3.5 w-3.5 mr-1" /> Product Name
-            </button>
+          <div className="flex items-center gap-2 mb-1">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs font-semibold text-muted-foreground">Type name / SKU / barcode to search live</span>
           </div>
           <div className="flex items-center gap-2">
             <ScanBarcode className="h-5 w-5 text-secondary ml-1" />
@@ -963,10 +1044,10 @@ function Billing() {
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
-                setShowSuggestions(e.target.value.trim().length > 0);
+                setShowSuggestions(true);
               }}
               onFocus={() => searchQuery.trim() && setShowSuggestions(true)}
-              placeholder={searchType === "barcode" ? "Scan or type barcode…" : "Search by product name…"}
+              placeholder="Search product name, SKU or barcode…"
               className="flex-1 bg-transparent px-2 py-2 text-sm outline-none"
             />
             <button
@@ -1039,83 +1120,34 @@ function Billing() {
           )}
         </div>
 
-        {/* Search results / suggestions */}
-        {showSuggestions && searchResults && searchResults.length > 0 && (
-          <div className="rounded-xl border border-border bg-white shadow-lg p-2 max-h-80 overflow-y-auto">
+        {/* Search results / suggestions — updates live as you type */}
+        {showSuggestions && searchQuery.trim() && (
+          <div className="rounded-xl border border-border bg-white shadow-lg p-2 max-h-[28rem] overflow-y-auto">
             <div className="flex items-center justify-between px-2 mb-1">
               <span className="text-[10px] font-semibold text-muted-foreground uppercase">
-                {searchResults.length} product(s) found
+                {searchResults === null || searchResults === undefined ? (
+                  searchLoading ? "Searching…" : "No matching products"
+                ) : searchResults.length === 0 ? (
+                  searchLoading ? "Searching…" : "No matching products"
+                ) : (
+                  `${searchResults.length} product(s) found`
+                )}
               </span>
               <button onClick={() => setShowSuggestions(false)} className="text-muted-foreground/60 hover:text-foreground">
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
-            {searchResults.map((p) => {
-              const price = Number(p.discount_price ?? p.price);
-              const vars = mapVariations(p.color_variations).filter((v) => v.color || v.color_code);
-              const totalVariantQty = vars.reduce((s, v) => s + v.quantity, 0);
-              const totalVariantSold = vars.reduce((s, v) => s + v.sold, 0);
-              const totalVariantRemaining = vars.reduce((s, v) => s + (v.remaining ?? (v.quantity - v.sold)), 0);
-              const hasVariants = vars.length > 0;
-              const stockDisplay = hasVariants ? totalVariantRemaining : p.stock;
-              const isOutOfStock = stockDisplay <= 0;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => addProduct(p)}
-                  disabled={isOutOfStock}
-                  className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-secondary-soft text-left transition ${isOutOfStock ? "opacity-50" : ""}`}
-                >
-                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">
-                    {p.image_urls?.[0] ? (
-                      <img src={p.image_urls[0]} alt={p.name} className="h-full w-full object-cover" />
-                    ) : null}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-foreground">{p.name}</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
-                      {p.barcode || "No barcode"} · {p.sku || ""}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-sm font-bold text-foreground">₹{price}</span>
-                      {hasVariants && (
-                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">
-                          {vars.length} variant{vars.length !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </div>
-                    {hasVariants && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {vars.slice(0, 4).map((v) => {
-                          const rem = v.remaining ?? (v.quantity - v.sold);
-                          const vOut = rem <= 0 && v.quantity > 0;
-                          const vLow = rem > 0 && rem <= 2;
-                          return (
-                            <span
-                              key={v.color + v.color_code}
-                              className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold ${
-                                vOut ? "bg-rose-50 text-rose-600" : vLow ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
-                              }`}
-                            >
-                              {v.image_url ? <img src={v.image_url} alt="" className="h-2.5 w-2.5 rounded-full object-cover" /> : null}
-                              {v.color || v.color_code}
-                              {v.color_code ? <span className="opacity-60">({v.color_code})</span> : null}
-                              <span className="opacity-60">·{rem}</span>
-                            </span>
-                          );
-                        })}
-                        {vars.length > 4 && <span className="text-[8px] text-muted-foreground">+{vars.length - 4}</span>}
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className={`text-xs font-semibold ${isOutOfStock ? "text-rose-600" : "text-emerald-600"}`}>
-                      {isOutOfStock ? "Out of stock" : `${stockDisplay} left`}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
+            {searchTriggerList.length > 0 ? (
+              searchTriggerList
+            ) : (
+              searchResults && searchResults.length === 0 && !searchLoading ? (
+                <div className="py-8 text-center text-xs text-muted-foreground/70">
+                  No products match "{searchQuery.trim()}"
+                </div>
+              ) : (
+                <div className="py-8 text-center text-xs text-muted-foreground/70">Searching products…</div>
+              )
+            )}
           </div>
         )}
 
@@ -1126,7 +1158,8 @@ function Billing() {
               Bill Items ({lines.length})
             </div>
             {lines.map((l, i) => {
-              const price = Number(l.product.discount_price ?? l.product.price);
+              const price = unitPriceFor(l);
+              const hasWholesale = Number(l.product.wholesale_price ?? 0) > 0;
               const vars = mapVariations(l.product.color_variations).filter((v) => v.color || v.color_code);
               return (
                 <div key={l.product.id} className="rounded-xl border border-border bg-white p-3 shadow-sm">
@@ -1141,7 +1174,33 @@ function Billing() {
                       <div className="text-[10px] text-muted-foreground">
                         {l.color ? <span className="font-semibold text-emerald-700">{l.color}</span> : null}
                         {l.color ? " · " : ""}₹{price}
+                        {hasWholesale && l.priceType === "WHOLESALE" ? (
+                          <span className="ml-1 rounded bg-primary/10 px-1 py-px text-[8px] font-bold text-primary">WHOLESALE</span>
+                        ) : null}
                       </div>
+                      {/* Retail / Wholesale toggle */}
+                      {hasWholesale && (
+                        <div className="mt-1.5 inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setLines(lines.map((x, j) => (j === i ? { ...x, priceType: "RETAIL" } : x)))}
+                            className={`rounded-md px-2.5 py-1 text-[10px] font-semibold transition ${
+                              l.priceType === "RETAIL" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground"
+                            }`}
+                          >
+                            Retail · ₹{productPrice(l.product)}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLines(lines.map((x, j) => (j === i ? { ...x, priceType: "WHOLESALE" } : x)))}
+                            className={`rounded-md px-2.5 py-1 text-[10px] font-semibold transition ${
+                              l.priceType === "WHOLESALE" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground"
+                            }`}
+                          >
+                            Wholesale · ₹{l.product.wholesale_price}
+                          </button>
+                        </div>
+                      )}
                       {/* Per-line GST override */}
                       <div className="mt-1 flex items-center gap-1">
                         <Percent className="h-3 w-3 text-muted-foreground/60" />

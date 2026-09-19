@@ -295,6 +295,10 @@ BEGIN
             unit           = COALESCE(_unitv, unit),
             purchase_price = COALESCE(NULLIF((_item->>'unit_cost')::NUMERIC, 0), purchase_price),
             price          = COALESCE(NULLIF((_item->>'selling_price')::NUMERIC, 0), price),
+            wholesale_price = GREATEST(COALESCE(wholesale_price, 0), COALESCE((_item->>'wholesale_price')::NUMERIC, 0)),
+            retail_profit_pct = COALESCE((_item->>'retail_profit_pct')::NUMERIC, retail_profit_pct),
+            wholesale_profit_pct = COALESCE((_item->>'wholesale_profit_pct')::NUMERIC, wholesale_profit_pct),
+            total_unit_cost = GREATEST(0, COALESCE((_item->>'total_unit_cost')::NUMERIC, total_unit_cost)),
             material       = COALESCE(NULLIF(btrim(COALESCE(_item->>'material','')), ''), material)
         WHERE id = _linked_pid;
       IF _vars IS NOT NULL THEN
@@ -319,6 +323,10 @@ BEGIN
               unit           = COALESCE(_unitv, unit),
               purchase_price = COALESCE(NULLIF((_item->>'unit_cost')::NUMERIC, 0), purchase_price),
               price          = COALESCE(NULLIF((_item->>'selling_price')::NUMERIC, 0), price),
+              wholesale_price = GREATEST(COALESCE(wholesale_price, 0), COALESCE((_item->>'wholesale_price')::NUMERIC, 0)),
+              retail_profit_pct = COALESCE((_item->>'retail_profit_pct')::NUMERIC, retail_profit_pct),
+              wholesale_profit_pct = COALESCE((_item->>'wholesale_profit_pct')::NUMERIC, wholesale_profit_pct),
+              total_unit_cost = GREATEST(0, COALESCE((_item->>'total_unit_cost')::NUMERIC, total_unit_cost)),
               material       = COALESCE(NULLIF(btrim(COALESCE(_item->>'material','')), ''), material)
           WHERE id = _linked_pid;
         IF _vars IS NOT NULL THEN
