@@ -552,6 +552,57 @@ function Billing() {
 
   const total = Math.max(0, totalFinalPrice - discount + shippingCharge + deliveryCharge);
 
+  // Persist the exact amounts the billing panel showed back onto the order so
+  // the printed receipt always matches the billed total. The deployed
+  // place_order RPC can store 0 (or stale) prices when a product has no retail
+  // price set yet, which made the printed receipt show a lesser amount.
+  async function persistBilledAmounts(orderId: string) {
+    const dec = (n: number) => Math.round(n * 100) / 100;
+    const panelSubtotal = dec(subtotal);
+    const panelGst = dec(gst);
+    const panelDiscount = dec(discount);
+    const panelShipping = dec(shippingCharge + deliveryCharge);
+    const panelTotal = dec(total);
+    const split = splitCgstSgst(panelGst);
+
+    await supabase.from("orders").update({
+      subtotal: panelSubtotal,
+      discount: panelDiscount,
+      cgst_amount: split.cgst,
+      sgst_amount: split.sgst,
+      igst_amount: 0,
+      gst_total: panelGst,
+      shipping_charges: panelShipping,
+      total: panelTotal,
+    }).eq("id", orderId);
+
+    const { data: rows } = await supabase
+      .from("order_items")
+      .select("id, product_id, variation")
+      .eq("order_id", orderId);
+
+    for (const row of rows ?? []) {
+      const idx = lines.findIndex(
+        (l) => l.product.id === row.product_id && (l.color ?? "") === (row.variation ?? "")
+      );
+      if (idx < 0) continue;
+      const d = lineDetails[idx];
+      const rate = Math.max(0, d.gstRate);
+      const lineGst = dec(d.gstAmount);
+      const half = dec(lineGst / 2);
+      await supabase.from("order_items").update({
+        unit_price: dec(d.unitPrice),
+        line_total: dec(d.lineSubtotal),
+        cgst_rate: dec(rate / 2),
+        sgst_rate: dec(rate - rate / 2),
+        igst_rate: 0,
+        cgst_amount: half,
+        sgst_amount: dec(lineGst - half),
+        igst_amount: 0,
+      }).eq("id", row.id);
+    }
+  }
+
   async function placeSale() {
     if (!lines.length) return toast.error("Add at least one product");
     const items = lines.map((l) => ({
@@ -575,6 +626,11 @@ function Billing() {
     if (error) return toast.error(error.message);
 
     const invoiceId = data as string;
+    try {
+      await persistBilledAmounts(invoiceId);
+    } catch (e) {
+      console.error("Failed to persist billed amounts:", e);
+    }
     const invoiceDate = new Date().toISOString();
     setInvoice({ id: invoiceId, at: invoiceDate, auto: AUTO_PRINT_POS });
     toast.success("Sale completed");
