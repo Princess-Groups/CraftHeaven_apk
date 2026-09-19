@@ -2951,15 +2951,15 @@ function Purchases() {
             </div>
           </div>
 
-          {/* 38-Field Continuous Form */}
-          <div className="p-4">
-            {/* Purchase Entry Section */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between px-4 py-2 bg-primary/5 border-b border-primary/20">
-                <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Purchase Entry</h3>
+          {/* REORGANIZED FORM - 7 Logical Sections */}
+          <div className="p-4 space-y-6">
+            {/* 1. PURCHASE INFORMATION */}
+            <div>
+              <div className="flex items-center justify-between px-4 py-3 bg-primary/10 border-b border-primary/20">
+                <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Purchase Information</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                {FORM_FIELDS.slice(0, 20).map((f) => (
+                {FORM_FIELDS.filter((f) => ["slot_id", "barcode", "supplier_name", "supplier_bill_no", "date", "name", "category_id", "material", "colour", "image_url"].includes(f.key)).map((f) => (
                   <div key={f.key} className="space-y-1">
                     <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                       {f.label}
@@ -2970,15 +2970,66 @@ function Purchases() {
               </div>
             </div>
 
-            {/* Product Entry Section */}
+            {/* 2. QUANTITY & PURCHASE COST */}
             <div>
-              <div className="flex items-center justify-between px-4 py-2 bg-emerald-50 border-b border-emerald-200">
-                <h3 className="text-sm font-bold text-emerald-700 uppercase tracking-wider">Product Entry</h3>
+              <div className="flex items-center justify-between px-4 py-3 bg-blue-50 border-b border-blue-200">
+                <h3 className="text-sm font-bold text-blue-700 uppercase tracking-wider">Quantity & Purchase Cost</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                {FORM_FIELDS.slice(20).map((f) => (
+                {FORM_FIELDS.filter((f) => ["per_packet_value", "per_packet_unit", "total_unit", "total_unit_type", "quantity", "unit_price", "total_price", "purchase_packing_freight_charge", "slot_charge_per_product", "other_charges", "total_unit_cost", "final_purchase_cost"].includes(f.key)).map((f) => (
                   <div key={f.key} className="space-y-1">
-                    <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <Label className={`text-[11px] font-semibold ${f.key.includes("total") || f.key.includes("cost") || f.key.includes("price") ? "text-blue-700" : "text-muted-foreground"} uppercase tracking-wide`}>
+                      {f.label}
+                    </Label>
+                    {renderFieldInput(editingIdx!, f, activeRow)}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 3. SELLING & PROFIT */}
+            <div>
+              <div className="flex items-center justify-between px-4 py-3 bg-emerald-50 border-b border-emerald-200">
+                <h3 className="text-sm font-bold text-emerald-700 uppercase tracking-wider">Selling & Profit</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+                {FORM_FIELDS.filter((f) => ["retail_profit_pct", "retail_selling_price", "wholesale_profit_pct", "wholesale_price", "profit_per_piece_pct", "minimum_stock", "current_stock", "rack_location"].includes(f.key)).map((f) => (
+                  <div key={f.key} className="space-y-1">
+                    <Label className={`text-[11px] font-semibold ${f.key.includes("profit") || f.key.includes("price") ? "text-emerald-700" : "text-muted-foreground"} uppercase tracking-wide`}>
+                      {f.label}
+                    </Label>
+                    {renderFieldInput(editingIdx!, f, activeRow)}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 4. PACKING, DELIVERY & TAX */}
+            <div>
+              <div className="flex items-center justify-between px-4 py-3 bg-amber-50 border-b border-amber-200">
+                <h3 className="text-sm font-bold text-amber-700 uppercase tracking-wider">Packing, Delivery & Tax</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+                {FORM_FIELDS.filter((f) => ["delivery_packing_charge", "delivery_charge", "per_unit_delivery_packing", "per_unit_delivery", "per_unit_total_charges", "total_delivery_packing", "total_delivery", "total_delivery_packing_charges", "gst_rate", "gst_amount", "discount_type", "discount_pct", "discount_amount"].includes(f.key)).map((f) => (
+                  <div key={f.key} className="space-y-1">
+                    <Label className={`text-[11px] font-semibold ${f.key.includes("gst") || f.key.includes("discount") ? "text-amber-700" : "text-muted-foreground"} uppercase tracking-wide`}>
+                      {f.label}
+                    </Label>
+                    {renderFieldInput(editingIdx!, f, activeRow)}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 5. FINAL / PAYMENT INFORMATION */}
+            <div>
+              <div className="flex items-center justify-between px-4 py-3 bg-purple-50 border-b border-purple-200">
+                <h3 className="text-sm font-bold text-purple-700 uppercase tracking-wider">Final & Payment</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+                {FORM_FIELDS.filter((f) => ["total_final", "single_product_final_price", "cash_received_by", "remark", "mrp", "mop"].includes(f.key)).map((f) => (
+                  <div key={f.key} className="space-y-1">
+                    <Label className={`text-[11px] font-semibold ${f.key.includes("final") || f.key.includes("payment") ? "text-purple-700" : "text-muted-foreground"} uppercase tracking-wide`}>
                       {f.label}
                     </Label>
                     {renderFieldInput(editingIdx!, f, activeRow)}
