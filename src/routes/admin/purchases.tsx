@@ -214,18 +214,21 @@ function calcRow(r: ProductRow): ProductRow {
 
   const rsp = retail_selling_price;
   const profit_pct = rsp > 0 && total_unit_cost > 0 ? ((rsp - total_unit_cost) / total_unit_cost) * 100 : 0;
+  // Sales Summary figures are calculated on the SELLING value (retail price × qty),
+  // matching Billing, so GST and Discount reflect the sale rather than the purchase.
+  const total_selling_value = Math.round(rsp * qty * 100) / 100;
   const gst_pct = Math.min(Math.max(Number(r.gst_rate) || 0, 0), 100);
-  const gst = final_purchase_cost * gst_pct / 100;
+  const gst = total_selling_value * gst_pct / 100;
 
-  // Discount calculation: supports both fixed amount and percentage
+  // Discount calculation: supports both fixed amount and percentage (on selling value)
   const discountType = r.discount_type || "amount";
   const discountPct = Math.min(Math.max(Number(r.discount_pct) || 0, 0), 100);
   const discountAmount = Number(r.discount_amount) || 0;
   const discount = discountType === "percentage"
-    ? Math.round(final_purchase_cost * discountPct / 100 * 100) / 100
+    ? Math.round(total_selling_value * discountPct / 100 * 100) / 100
     : discountAmount;
 
-  const total_final = final_purchase_cost + gst - discount;
+  const total_final = total_selling_value + gst - discount;
   const single_product_final_price = qty > 0 ? Math.round((total_final / qty) * 100) / 100 : 0;
 
   return {
