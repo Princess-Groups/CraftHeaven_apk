@@ -295,6 +295,50 @@ function LabelPrinting() {
     toast.success(`Exported ${rows.length} items to Excel (CSV format)`);
   }, [filteredItems, currentProductsById, selectedSlotId]);
 
+  // Export label batch details as a CSV file
+  const exportToCsv = useCallback(() => {
+    if (!filteredItems || filteredItems.length === 0) {
+      toast.error("No data to export");
+      return;
+    }
+
+    const esc = (value: string) => {
+      if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+      return value;
+    };
+
+    const headers = [
+      "Product Name",
+      "SKU / Item Code",
+      "Barcode Number",
+      "Purchase Qty",
+      "Labels to Print",
+      "MRP / Selling Price",
+    ];
+
+    const rows = filteredItems.map((item) => {
+      const product = item.product_id ? currentProductsById.get(item.product_id) : null;
+      return [
+        product?.name ?? item.product_name,
+        product?.sku ?? "",
+        product?.barcode ?? item.barcode ?? "",
+        String(item.purchase_quantity),
+        String(item.labels_to_print),
+        Number(product?.price ?? item.selling_price ?? 0).toFixed(2),
+      ];
+    });
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.map(esc).join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `label-printing-${selectedSlotId || "slot"}-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${rows.length} items to CSV`);
+  }, [filteredItems, currentProductsById, selectedSlotId]);
+
   // Toggle item selection
   function toggleItem(id: string) {
     setSelectedItems((prev) => {
@@ -471,6 +515,16 @@ function LabelPrinting() {
             {batch && (
               <div className="flex flex-wrap items-center gap-2">
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={exportToCsv}
+                    disabled={!batchItems || batchItems.length === 0}
+                    className="flex items-center gap-1.5 rounded-lg border border-green-600 bg-white px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-50 disabled:opacity-50 transition"
+                    title="Export to CSV"
+                  >
+                    <FileDown className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Export CSV</span>
+                    <span className="sm:hidden">CSV</span>
+                  </button>
                   <button
                     onClick={exportToExcel}
                     disabled={!batchItems || batchItems.length === 0}
