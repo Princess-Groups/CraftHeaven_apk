@@ -71,6 +71,7 @@ type LabelBatchItem = {
 type SlotProduct = {
   product_id: string | null;
   quantity: number;
+  unit_cost: number | null;
   products: {
     id: string;
     name: string;
@@ -135,7 +136,7 @@ function LabelPrinting() {
       if (!selectedSlotId) return [] as SlotProduct[];
       const { data, error } = await supabase
         .from("purchase_items")
-        .select("product_id,quantity,products(id,name,sku,barcode,price,stock,unit,material)")
+        .select("product_id,quantity,unit_cost,products(id,name,sku,barcode,price,stock,unit,material)")
         .eq("slot_number", selectedSlotId);
       if (error) throw error;
       return (data ?? []) as unknown as SlotProduct[];
@@ -274,13 +275,16 @@ function LabelPrinting() {
 
     const rows = filteredItems.map((item) => {
       const product = item.product_id ? currentProductsById.get(item.product_id) : null;
+      const exportPrice = Number(product?.price) > 0
+        ? Number(product?.price)
+        : (item.selling_price > 0 ? item.selling_price : (item.unit_price ?? 0));
       return [
         product?.name ?? item.product_name,
         product?.sku ?? "",
         product?.barcode ?? item.barcode ?? "",
         String(item.purchase_quantity),
         String(item.labels_to_print),
-        Number(product?.price ?? item.selling_price ?? 0).toFixed(2),
+        exportPrice.toFixed(2),
       ];
     });
 
@@ -318,13 +322,16 @@ function LabelPrinting() {
 
     const rows = filteredItems.map((item) => {
       const product = item.product_id ? currentProductsById.get(item.product_id) : null;
+      const exportPrice = Number(product?.price) > 0
+        ? Number(product?.price)
+        : (item.selling_price > 0 ? item.selling_price : (item.unit_price ?? 0));
       return [
         product?.name ?? item.product_name,
         product?.sku ?? "",
         product?.barcode ?? item.barcode ?? "",
         String(item.purchase_quantity),
         String(item.labels_to_print),
-        Number(product?.price ?? item.selling_price ?? 0).toFixed(2),
+        exportPrice.toFixed(2),
       ];
     });
 
@@ -426,13 +433,14 @@ function LabelPrinting() {
               <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                 {slotProducts.filter((item) => item.products).map((item, index) => {
                   const product = item.products!;
+                  const shownPrice = Number(product.price) > 0 ? Number(product.price) : (Number(item.unit_cost) || 0);
                   return (
                     <div key={`${item.product_id}-${index}`} className="rounded-md border border-border bg-white p-2.5 text-xs">
                       <p className="font-semibold text-foreground">{product.name}</p>
                       <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
                         <span>SKU: <b className="text-foreground">{product.sku || "—"}</b></span>
                         <span>Barcode: <b className="font-mono text-foreground">{product.barcode || "—"}</b></span>
-                        <span>Price: <b className="text-foreground">₹{Number(product.price).toFixed(2)}</b></span>
+                        <span>Price: <b className="text-foreground">₹{shownPrice.toFixed(2)}</b></span>
                         <span>Slot qty: <b className="text-foreground">{item.quantity} {product.unit}</b></span>
                         <span>Stock: <b className="text-foreground">{product.stock}</b></span>
                         {product.material && <span>Material: <b className="text-foreground">{product.material}</b></span>}
