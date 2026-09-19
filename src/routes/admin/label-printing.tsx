@@ -196,6 +196,60 @@ function LabelPrinting() {
     });
   }, [batchItems, search, currentProductsById]);
 
+  // Live slot products used when the label batch is empty/stale, so the
+  // "Products in Slot" table always reflects the slot's actual contents.
+  const slotFallbackItems = useMemo<LabelBatchItem[]>(() => {
+    const map = new Map<string, LabelBatchItem>();
+    let order = 0;
+    for (const sp of slotProducts ?? []) {
+      const key = sp.products?.id ?? sp.product_id ?? `row-${order}`;
+      const qty = Number(sp.quantity) || 0;
+      const existing = map.get(key);
+      if (existing) {
+        existing.purchase_quantity += qty;
+        existing.labels_to_print += qty;
+        existing.labels_remaining += qty;
+      } else {
+        map.set(key, {
+          id: `live-${key}`,
+          batch_id: "",
+          product_id: sp.product_id,
+          product_name: sp.products?.name ?? "Unknown",
+          barcode: sp.products?.barcode ?? null,
+          purchase_quantity: qty,
+          labels_to_print: qty,
+          labels_printed: 0,
+          labels_remaining: qty,
+          unit_price: Number(sp.unit_cost) || 0,
+          selling_price: Number(sp.products?.price) || 0,
+          sort_order: order,
+          created_at: "",
+        });
+        order++;
+      }
+    }
+    return [...map.values()].sort((a, b) => a.sort_order - b.sort_order);
+  }, [slotProducts]);
+
+  const effectiveItems = useMemo(
+    () => (filteredItems.length > 0 ? filteredItems : slotFallbackItems),
+    [filteredItems, slotFallbackItems]
+  );
+
+  // Table footer totals (live rows, batch or fallback)
+  const effectiveTotals = useMemo(
+    () =>
+      effectiveItems.reduce(
+        (acc, item) => ({
+          total: acc.total + item.labels_to_print,
+          printed: acc.printed + item.labels_printed,
+          remaining: acc.remaining + (item.labels_to_print - item.labels_printed),
+        }),
+        { total: 0, printed: 0, remaining: 0 }
+      ),
+    [effectiveItems]
+  );
+
   // Summary stats
   const stats = useMemo(() => {
     if (!batchItems) return { total: 0, printed: 0, remaining: 0 };
@@ -210,8 +264,8 @@ function LabelPrinting() {
   }, [batchItems]);
 
   // Auto-select all on select all
-  const allSelected = filteredItems.length > 0 && filteredItems.every((item) => selectedItems.has(item.id));
-  const someSelected = filteredItems.some((item) => selectedItems.has(item.id));
+  const allSelected = effectiveItems.length > 0 && effectiveItems.every((item) => selectedItems.has(item.id));
+  const someSelected = effectiveItems.some((item) => selectedItems.has(item.id));
 
   // Create batch for slot
   const createBatch = useCallback(async () => {
@@ -236,6 +290,7 @@ function LabelPrinting() {
   // Update item label count
   const updateItemQuantity = useCallback(
     async (itemId: string, newQty: number) => {
+      if (!itemId || itemId.startsWith("live-")) return;
       try {
         const { error } = await supabase.rpc("update_label_item_quantity", {
           _item_id: itemId,
@@ -254,7 +309,7 @@ function LabelPrinting() {
 
   // Export label batch details to Excel (CSV format) for the client's label software
   const exportToExcel = useCallback(() => {
-    if (!filteredItems || filteredItems.length === 0) {
+    if (!effectiveItems || effectiveItems.length === 0) {
       toast.error("No data to export");
       return;
     }
@@ -273,7 +328,7 @@ function LabelPrinting() {
       "MRP / Selling Price",
     ];
 
-    const rows = filteredItems.map((item) => {
+    const rows = effectiveItems.map((item) => {
       const product = item.product_id ? currentProductsById.get(item.product_id) : null;
       const exportPrice = Number(product?.price) > 0
         ? Number(product?.price)
@@ -297,7 +352,7 @@ function LabelPrinting() {
     link.click();
     URL.revokeObjectURL(url);
     toast.success(`Exported ${rows.length} items to Excel (CSV format)`);
-  }, [filteredItems, currentProductsById, selectedSlotId]);
+  }, [effectiveItems, currentProductsById, selectedSlotId]);
 
   // Export label batch details as a CSV file
   const exportToCsv = useCallback(() => {
@@ -320,7 +375,7 @@ function LabelPrinting() {
       "MRP / Selling Price",
     ];
 
-    const rows = filteredItems.map((item) => {
+    const rows = effectiveItems.map((item) => {
       const product = item.product_id ? currentProductsById.get(item.product_id) : null;
       const exportPrice = Number(product?.price) > 0
         ? Number(product?.price)
@@ -344,7 +399,7 @@ function LabelPrinting() {
     link.click();
     URL.revokeObjectURL(url);
     toast.success(`Exported ${rows.length} items to CSV`);
-  }, [filteredItems, currentProductsById, selectedSlotId]);
+  }, [effectiveItems, currentProductsById, selectedSlotId]);
 
   // Toggle item selection
   function toggleItem(id: string) {
@@ -360,7 +415,7 @@ function LabelPrinting() {
     if (allSelected) {
       setSelectedItems(new Set());
     } else {
-      setSelectedItems(new Set(filteredItems.map((i) => i.id)));
+      setSelectedItems(new Set(effectiveItems.map((i) => i.id)));
     }
   }
 
@@ -502,9 +557,9 @@ function LabelPrinting() {
             <div className="flex items-center gap-3">
               <h3 className="text-sm font-bold text-foreground">
                 Products in Slot
-                {batch && (
+                {effectiveItems.length > 0 && (
                   <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    ({filteredItems.length} product{filteredItems.length !== 1 ? "s" : ""})
+                    ({effectiveItems.length} product{effectiveItems.length !== 1 ? "s" : ""})
                   </span>
                 )}
               </h3>
@@ -520,12 +575,12 @@ function LabelPrinting() {
             </div>
 
             {/* Actions */}
-            {batch && (
+            {effectiveItems.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
                 <div className="flex items-center gap-1">
                   <button
                     onClick={exportToCsv}
-                    disabled={!batchItems || batchItems.length === 0}
+                    disabled={effectiveItems.length === 0}
                     className="flex items-center gap-1.5 rounded-lg border border-green-600 bg-white px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-50 disabled:opacity-50 transition"
                     title="Export to CSV"
                   >
@@ -535,7 +590,7 @@ function LabelPrinting() {
                   </button>
                   <button
                     onClick={exportToExcel}
-                    disabled={!batchItems || batchItems.length === 0}
+                    disabled={effectiveItems.length === 0}
                     className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50 transition"
                     title="Export to Excel for client label software"
                   >
@@ -557,7 +612,7 @@ function LabelPrinting() {
           )}
 
           {/* Empty State: No batch */}
-          {!batchLoading && !batch && selectedSlotId && (
+          {!batchLoading && !batch && selectedSlotId && effectiveItems.length === 0 && (
             <div className="p-12 text-center">
               <Package className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-sm font-medium text-foreground">No Label Batch Found</p>
@@ -576,7 +631,7 @@ function LabelPrinting() {
           )}
 
           {/* Empty State: No items */}
-          {!itemsLoading && batch && filteredItems.length === 0 && (
+          {!itemsLoading && batch && effectiveItems.length === 0 && (
             <div className="p-12 text-center">
               <Tags className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-sm font-medium text-foreground">No Products Found</p>
@@ -589,7 +644,7 @@ function LabelPrinting() {
           )}
 
           {/* Items Table */}
-          {!itemsLoading && filteredItems.length > 0 && (
+          {!itemsLoading && effectiveItems.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted text-[10px] uppercase text-muted-foreground">
@@ -613,7 +668,7 @@ function LabelPrinting() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((item, idx) => {
+                  {effectiveItems.map((item, idx) => {
                     const remaining = item.labels_to_print - item.labels_printed;
                     const isEditing = editingItem === item.id;
                     return (
@@ -684,7 +739,7 @@ function LabelPrinting() {
                                   Cancel
                                 </button>
                               </>
-                            ) : (
+                            ) : item.batch_id ? (
                               <>
                                 <button
                                   onClick={() => {
@@ -697,7 +752,7 @@ function LabelPrinting() {
                                   <RotateCcw className="h-3.5 w-3.5 text-primary" />
                                 </button>
                               </>
-                            )}
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -711,17 +766,17 @@ function LabelPrinting() {
                       TOTALS
                     </td>
                     <td className="p-2.5 text-xs font-bold text-right">
-                      {stats.total}
+                      {effectiveTotals.total}
                     </td>
                     <td className="p-2.5 text-xs font-bold text-primary text-right">
-                      {stats.total}
+                      {effectiveTotals.total}
                     </td>
                     <td className="p-2.5 text-xs font-bold text-emerald-600 text-right">
-                      {stats.printed}
+                      {effectiveTotals.printed}
                     </td>
                     <td className="p-2.5 text-xs font-bold text-right">
-                      <span className={stats.remaining > 0 ? "text-amber-600" : "text-emerald-600"}>
-                        {stats.remaining}
+                      <span className={effectiveTotals.remaining > 0 ? "text-amber-600" : "text-emerald-600"}>
+                        {effectiveTotals.remaining}
                       </span>
                     </td>
                     <td></td>
