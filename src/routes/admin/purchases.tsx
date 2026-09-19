@@ -3276,7 +3276,7 @@ function Purchases() {
         </div>
       )}
 
-      {/* ====== COMPACT PRODUCT LIST ====== */}
+      {/* ====== PURCHASE & PRODUCT ENTRIES ====== */}
       {!formOpen && (
         <>
           {/* Sticky Add Product Button */}
@@ -3287,8 +3287,11 @@ function Purchases() {
             <Plus className="h-4 w-4" /> Add Product
           </button>
 
-          {/* Product List */}
-          {calculatedRows.length > 0 ? (
+          {/* Purchase Entry Section */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-foreground">Purchase Entry</h2>
+            </div>
             <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
               <table className="w-full border-collapse text-sm">
                 <thead>
@@ -3343,7 +3346,13 @@ function Purchases() {
                 </tbody>
               </table>
             </div>
-          ) : (
+          </div>
+
+          {/* Product Entry Section */}
+          <div className="space-y-4 pt-6 border-t border-border">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-foreground">Product Entry</h2>
+            </div>
             <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
               <div className="px-4 py-3 bg-muted border-b border-border">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">All Products ({existingProducts?.length ?? 0})</h3>
@@ -3376,7 +3385,10 @@ function Purchases() {
                 </tbody>
               </table>
             </div>
-          )}
+            <p className="text-xs text-muted-foreground">
+              Add new products that don't exist in your inventory. This will create a new product entry and add it to your current purchase.
+            </p>
+          </div>
 
           {/* ===== SALES SUMMARY 1: Per Product Summary ===== */}
           {calculatedRows.length > 0 && (
