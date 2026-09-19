@@ -181,58 +181,41 @@ function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: numbe
   // Carry over the per packet unit type to total unit type when auto-calculating
   const autoTotalUnitType = ppv > 0 ? r.per_packet_unit : r.total_unit_type;
   const up = Number(r.unit_price) || 0;
-  const total_price = qty * up;
-  const perUnitPF = Number(r.purchase_packing_freight_charge) || 0;
-  const totalPF = Math.round(perUnitPF * qty * 100) / 100;
-  // Other charges are a flat total for the product line — spread them across the quantity
-  const otherCharges = Number(r.other_charges) || 0;
-  const perUnitOther = qty > 0 ? Math.round((otherCharges / qty) * 100) / 100 : 0;
-  // Packing & Delivery charges are entered as a TOTAL for the product line and are
-  // divided equally across the quantity (per unit), so each unit shares the cost evenly.
+  const slotChargePerUnit = Number(r.slot_charge_per_product) || 0;
+  
+  // Purchase Total = (Unit Price × Qty) + (Slot Charge × Qty)
+  const purchase_total = Math.round((up + slotChargePerUnit) * qty * 100) / 100;
+  
+  // Retail Price = Purchase Total + (Retail Profit % × Purchase Total)
+  const retailProfitPct = Number(r.retail_profit_pct) || 0;
+  const retail_price = retailProfitPct > 0 && purchase_total > 0
+    ? Math.round(purchase_total * (1 + retailProfitPct / 100) * 100) / 100
+    : Number(r.retail_selling_price) || 0;
+  
+  // Delivery + Packing charges (already in total from the form)
   const totalEnteredPacking = Number(r.delivery_packing_charge) || 0;
   const totalEnteredDelivery = Number(r.delivery_charge) || 0;
-  const perUnitPacking = qty > 0 ? Math.round((totalEnteredPacking / qty) * 100) / 100 : 0;
-  const perUnitDelivery = qty > 0 ? Math.round((totalEnteredDelivery / qty) * 100) / 100 : 0;
   const totalDeliveryPacking = totalEnteredPacking;
   const totalDelivery = totalEnteredDelivery;
-  const perUnitTotalCharges = perUnitPacking + perUnitDelivery;
-  // Single product cost = unit price + per-unit packing & freight + per-unit
-  // packing + per-unit delivery + per-unit other charges
-  const total_unit_cost = up + perUnitPF + perUnitPacking + perUnitDelivery + perUnitOther;
-  const final_purchase_cost = total_unit_cost * qty;
-
-  // Auto-calculate per-unit selling prices from profit percentages when provided
-  const retailProfitPct = Number(r.retail_profit_pct) || 0;
-  const wholesaleProfitPct = Number(r.wholesale_profit_pct) || 0;
-  const retail_selling_price =
-    retailProfitPct > 0 && total_unit_cost > 0
-      ? Math.round(total_unit_cost * (1 + retailProfitPct / 100) * 100) / 100
-      : Number(r.retail_selling_price) || 0;
-  const wholesale_price =
-    wholesaleProfitPct > 0 && total_unit_cost > 0
-      ? Math.round(total_unit_cost * (1 + wholesaleProfitPct / 100) * 100) / 100
-      : Number(r.wholesale_price) || 0;
-
-  const rsp = retail_selling_price;
-  const profit_pct = rsp > 0 && total_unit_cost > 0 ? ((rsp - total_unit_cost) / total_unit_cost) * 100 : 0;
-  // GST & Discount are calculated on the SELLING value (retail price × qty) when one is set,
-  // matching Billing, so figures reflect the sale. When no retail price exists they fall back
-  // to the purchase cost so they always compute and always react to field edits.
-  const total_selling_value = Math.round(rsp * qty * 100) / 100;
-  const sales_base = total_selling_value > 0 ? total_selling_value : final_purchase_cost;
-
+  const total_delivery_packing_charges = totalDeliveryPacking + totalDelivery;
+  
+  // Subtotal = Retail Price + Delivery + Packing
+  const subtotal = retail_price + totalDeliveryPacking + totalDelivery;
+  
+  // GST calculation
   const gst_pct = Math.min(Math.max(Number(r.gst_rate) || 0, 0), 100);
-  const gst = sales_base * gst_pct / 100;
-
+  const gst = Math.round(subtotal * gst_pct / 100 * 100) / 100;
+  
   // Discount calculation: supports both fixed amount and percentage (on selling value)
   const discountType = r.discount_type || "amount";
   const discountPct = Math.min(Math.max(Number(r.discount_pct) || 0, 0), 100);
   const discountAmount = Number(r.discount_amount) || 0;
   const discount = discountType === "percentage"
-    ? Math.round(sales_base * discountPct / 100 * 100) / 100
+    ? Math.round(subtotal * discountPct / 100 * 100) / 100
     : discountAmount;
-
-  const total_final = sales_base + gst - discount;
+  
+  // Final = Subtotal + GST - Discount, rounded
+  const total_final = Math.round((subtotal + gst - discount) * 100) / 100;
   const single_product_final_price = qty > 0 ? Math.round((total_final / qty) * 100) / 100 : 0;
 
   return {
@@ -240,32 +223,36 @@ function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: numbe
     quantity: qty,
     total_unit: tu,
     total_unit_type: autoTotalUnitType,
-    total_price,
-    total_unit_cost,
-    final_purchase_cost,
-    // Recalculate slot charges if slot_id is assigned
+    total_price: Math.round(up * qty * 100) / 100,
+    // For purchase total: (Unit Price + Slot Charge per unit) × Quantity
+    final_purchase_cost: purchase_total,
+    // Slot charge per product is already stored in the row, we just use it
     slot_charge_per_product: r.slot_id ? (() => {
       const slot = slotsList.find((s) => s.id === r.slot_id);
       if (slot) {
         const totalCharges = (slot.packing_charges ?? 0) + (slot.freight_charges ?? 0) + (slot.other_charges ?? 0);
-        const qty = Number(r.quantity) || 0;
-        return Math.round((totalCharges / (slot.total_quantity ?? 1)) * qty * 100) / 100;
+        return Math.round((totalCharges / (slot.total_quantity ?? 1)) * 100) / 100;
       }
-      return totalPF;
-    })() : r.slot_charge_per_product,
-    per_unit_delivery_packing: perUnitPacking,
-    per_unit_delivery: perUnitDelivery,
-    per_unit_total_charges: perUnitTotalCharges,
-    total_delivery_packing: totalDeliveryPacking,
-    total_delivery: totalDelivery,
+      return Number(r.slot_charge_per_product) || 0;
+    })() : Number(r.slot_charge_per_product) || 0,
+    // Delivery and packing are already total for the line
+    total_delivery_packing: totalEnteredPacking,
+    total_delivery: totalEnteredDelivery,
     total_delivery_packing_charges: totalDeliveryPacking + totalDelivery,
-    retail_selling_price,
-    wholesale_price,
-    profit_per_piece_pct: Math.round(profit_pct * 100) / 100,
+    // Retail price is calculated from purchase total + profit
+    retail_selling_price: retail_price,
+    // Wholesale is calculated from unit cost if no value
+    wholesale_price: wholesaleProfitPct > 0 && purchase_total > 0
+      ? Math.round(((purchase_total / qty) * (1 + wholesaleProfitPct / 100)) * 100) / 100
+      : Number(r.wholesale_price) || 0,
+    // Profit per piece is calculated from retail price and unit cost
+    profit_per_piece_pct: retail_price > 0 && (up + slotChargePerUnit) > 0
+      ? Math.round(((retail_price - (up + slotChargePerUnit)) / (up + slotChargePerUnit)) * 100 * 100) / 100
+      : 0,
     discount_amount: discount,
-    gst_amount: Math.round(gst * 100) / 100,
-    total_final: Math.round(total_final * 100) / 100,
-    single_product_final_price: Math.round(single_product_final_price * 100) / 100,
+    gst_amount: gst,
+    total_final: total_final,
+    single_product_final_price: single_product_final_price,
   };
 }
 
