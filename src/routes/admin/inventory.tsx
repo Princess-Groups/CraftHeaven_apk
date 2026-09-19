@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useMemo } from "react";
@@ -106,6 +106,38 @@ function Inventory() {
     }
     return list;
   }, [products, filter, searchQ]);
+
+  // One-click Re-Stock: directly add 1 unit to a product's stock. Variant
+  // products keep color_variations in sync with the top-level stock.
+  async function restock(id: string, product: any) {
+    const cur: any[] = Array.isArray(product.color_variations) ? product.color_variations : [];
+    const hasVars = cur.some((v: any) => v?.color || v?.color_code);
+    let payload: any;
+    if (hasVars) {
+      let pick = 0;
+      let minRem = Infinity;
+      cur.forEach((v: any, i: number) => {
+        const rem = Number(v.remaining ?? 0) || 0;
+        if (v.color || v.color_code) {
+          if (rem < minRem) {
+            minRem = rem;
+            pick = i;
+          }
+        }
+      });
+      const next = cur.map((v: any, i: number) =>
+        i === pick ? { ...v, remaining: Math.max(0, (Number(v.remaining) || 0) + 1) } : v
+      );
+      const remainSum = next.reduce((s: number, v: any) => s + (Number(v.remaining) || 0), 0);
+      payload = { color_variations: next, stock: remainSum, is_available: remainSum > 0 };
+    } else {
+      payload = { stock: (Number(product.stock) || 0) + 1, is_available: true };
+    }
+    const { error } = await supabase.from("products").update(payload).eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success(`Restocked: ${product.name} (+1)`);
+    qc.invalidateQueries({ queryKey: ["inv"] });
+  }
 
   async function adjust(id: string, stock: number, product: any) {
     const { error } = await supabase
@@ -425,14 +457,13 @@ function Inventory() {
                   )}
 
                   {/* Re-Stock button */}
-                  <Link
-                    to="/admin/purchases"
-                    search={{ restock: p.id }}
+                  <button
+                    onClick={() => restock(p.id, p)}
                     className="mt-3 flex items-center justify-center gap-1.5 w-full rounded-lg bg-primary/10 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition"
                   >
                     <ShoppingCart className="h-3.5 w-3.5" /> Re-Stock
                     <ArrowRight className="h-3 w-3" />
-                  </Link>
+                  </button>
                 </div>
               );
             })}
