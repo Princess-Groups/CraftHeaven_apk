@@ -238,7 +238,10 @@ function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: numbe
       const slot = slotsList.find((s) => s.id === r.slot_id);
       if (slot) {
         const totalCharges = (slot.packing_charges ?? 0) + (slot.freight_charges ?? 0) + (slot.other_charges ?? 0);
-        return Math.round((totalCharges / (slot.total_quantity ?? 1)) * 100) / 100;
+        // slot_charge_per_product is the TOTAL charge for this product line (not per unit)
+        // But we need to calculate it based on the slot's per-unit rate × product quantity
+        const perUnitRate = totalCharges / (slot.total_quantity ?? 1);
+        return Math.round(perUnitRate * qty * 100) / 100;
       }
       return Number(r.slot_charge_per_product) || 0;
     })() : Number(r.slot_charge_per_product) || 0,
