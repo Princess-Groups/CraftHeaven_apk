@@ -2996,7 +2996,7 @@ function Purchases() {
                 <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Purchase Entry</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                {FORM_FIELDS.slice(0, 21).map((f) => (
+                {FORM_FIELDS.slice(0, 20).map((f) => (
                   <div key={f.key} className="space-y-1">
                     <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                       {f.label}
@@ -3013,7 +3013,7 @@ function Purchases() {
                 <h3 className="text-sm font-bold text-emerald-700 uppercase tracking-wider">Product Entry</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                {FORM_FIELDS.slice(21).map((f) => (
+                {FORM_FIELDS.slice(20).map((f) => (
                   <div key={f.key} className="space-y-1">
                     <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                       {f.label}
