@@ -1937,7 +1937,10 @@ function Purchases() {
         wholesale_profit_pct: Number(row.wholesale_profit_pct) || 0,
         total_unit_cost: Number(row.total_unit_cost) || 0,
         purchase_price: Number(row.unit_price) || 0,
-        stock: Math.round(Number(row.current_stock) || 0),
+        stock: Math.max(
+          Math.round(Number(row.current_stock) || 0),
+          (row.color_variants || []).reduce((s, v) => s + (Math.round(Number(v.quantity) || 0) || 0), 0)
+        ),
         reorder_level: Math.round(Number(row.minimum_stock) || 5),
         unit: row.per_packet_unit || "Nos",
         image_urls: row.image_url ? [row.image_url] : [],

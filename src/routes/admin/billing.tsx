@@ -552,6 +552,45 @@ function Billing() {
 
   const total = Math.max(0, totalFinalPrice - discount + shippingCharge + deliveryCharge);
 
+  // Keep color-variation stock in sync with products.stock after each sale so
+  // the billing search panel, inventory and the order RPC all agree. The order
+  // RPC deducts products.stock but never decrements color_variations, which
+  // made the search tile show stale availability.
+  async function syncVariantStock() {
+    for (const l of lines) {
+      const vars = mapVariations(l.product.color_variations);
+      if (!vars.length) continue;
+      const { data: fresh } = await supabase
+        .from("products")
+        .select("color_variations")
+        .eq("id", l.product.id)
+        .single();
+      if (!fresh) continue;
+      const cur: any[] = Array.isArray(fresh.color_variations) ? fresh.color_variations : [];
+      const next = cur.map((v: any) => {
+        if (!(v.color || v.color_code) || (v.color !== l.color && v.color_code !== l.color)) return v;
+        const qtySale = Math.max(0, l.qty);
+        const qtyN = Number(v.quantity) || 0;
+        const soldN = Number(v.sold) || 0;
+        const prevRem = v.remaining !== undefined && v.remaining !== null ? Number(v.remaining) : qtyN - soldN;
+        return {
+          ...v,
+          sold: Math.round((soldN + qtySale) * 100) / 100,
+          remaining: Math.max(0, Math.round((prevRem - qtySale) * 100) / 100),
+        };
+      });
+      const remainSum = next.reduce((s: number, v: any) => s + (Number(v.remaining) || 0), 0);
+      await supabase
+        .from("products")
+        .update({
+          color_variations: next,
+          stock: Math.round(remainSum * 100) / 100,
+          is_available: remainSum > 0,
+        })
+        .eq("id", l.product.id);
+    }
+  }
+
   // Persist the exact amounts the billing panel showed back onto the order so
   // the printed receipt always matches the billed total. The deployed
   // place_order RPC can store 0 (or stale) prices when a product has no retail
@@ -628,6 +667,7 @@ function Billing() {
     const invoiceId = data as string;
     try {
       await persistBilledAmounts(invoiceId);
+      await syncVariantStock();
     } catch (e) {
       console.error("Failed to persist billed amounts:", e);
     }
