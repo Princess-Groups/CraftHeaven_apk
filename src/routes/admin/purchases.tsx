@@ -169,7 +169,7 @@ const UNITS = ["Nos", "Packet", "Unit", "Kilogram", "Gram", "Liter", "ML", "Mete
 const PAYMENT_METHODS = ["UPI", "CASH", "GPAY", "CARD"] as const;
 
 // ---------- Calculated fields ----------
-function calcRow(r: ProductRow): ProductRow {
+function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: number | null; freight_charges?: number | null; other_charges?: number | null; total_quantity?: number | null }[]): ProductRow {
   // Auto-calculate total quantity from color variants if any exist
   const variants = r.color_variants || [];
   const variantTotalQty = variants.reduce((sum, v) => sum + (Number(v.quantity) || 0), 0);
@@ -243,7 +243,16 @@ function calcRow(r: ProductRow): ProductRow {
     total_price,
     total_unit_cost,
     final_purchase_cost,
-    slot_charge_per_product: r.slot_id ? totalPF : r.slot_charge_per_product,
+    // Recalculate slot charges if slot_id is assigned
+    slot_charge_per_product: r.slot_id ? (() => {
+      const slot = slotsList.find((s) => s.id === r.slot_id);
+      if (slot) {
+        const totalCharges = (slot.packing_charges ?? 0) + (slot.freight_charges ?? 0) + (slot.other_charges ?? 0);
+        const qty = Number(r.quantity) || 0;
+        return Math.round((totalCharges / (slot.total_quantity ?? 1)) * qty * 100) / 100;
+      }
+      return totalPF;
+    })() : r.slot_charge_per_product,
     per_unit_delivery_packing: perUnitPacking,
     per_unit_delivery: perUnitDelivery,
     per_unit_total_charges: perUnitTotalCharges,
@@ -1727,7 +1736,7 @@ function Purchases() {
     );
   }, [searchQ, existingProducts]);
 
-  const calculatedRows = useMemo(() => rows.map(calcRow), [rows]);
+  const calculatedRows = useMemo(() => rows.map((row) => calcRow(row, slotsList)), [rows, slotsList]);
 
   const grandTotals = useMemo(() => {
     return calculatedRows.reduce(
@@ -1767,61 +1776,10 @@ function Purchases() {
           }
         }
       }
-      // Auto-recalculate slot charge when quantity changes (if slot is assigned)
-      if (patch.quantity !== undefined) {
-        const row = next[idx];
-        if (row.slot_id) {
-          const slot = (slotsList ?? []).find((s) => s.id === row.slot_id);
-          if (slot) {
-            const totalCharges = (slot.packing_charges ?? 0) + (slot.freight_charges ?? 0) + (slot.other_charges ?? 0);
-            const perUnit = (slot.total_quantity ?? 1) > 0 ? totalCharges / (slot.total_quantity ?? 1) : 0;
-            const qty = Number(row.quantity) || 0;
-            const totalPF = Math.round(perUnit * qty * 100) / 100;
-            // purchase_packing_freight_charge = per-unit cost, slot_charge_per_product = total charges
-            next[idx] = { ...next[idx], purchase_packing_freight_charge: Math.round(perUnit * 100) / 100, slot_charge_per_product: totalPF };
-          }
-        }
-      }
-      // Handle slot changes: recalculate charges for affected slots
-      if (patch.slot_id !== undefined || patch.slot_total_charge !== undefined) {
-        const row = prev[idx];
-        const newSlotId = patch.slot_id !== undefined ? patch.slot_id : row.slot_id;
-        const newTotalCharge = patch.slot_total_charge !== undefined ? patch.slot_total_charge : row.slot_total_charge;
-
-        // If slot_id changed, recalculate both old and new slots
-        if (patch.slot_id !== undefined && patch.slot_id !== row.slot_id) {
-          // Recalculate old slot if it exists
-          if (row.slot_id) {
-            const oldProducts = next.filter((r) => r.slot_id === row.slot_id);
-            if (oldProducts.length > 0) {
-              const oldTotalCharge = oldProducts[0].slot_total_charge || 0;
-              const oldSlot = (slotsList ?? []).find((s) => s.id === row.slot_id);
-              next = recalcSlotCharges(next, row.slot_id, oldTotalCharge, getSlotPerUnitCost(oldSlot));
-            }
-          }
-          // Update slot totals map
-          if (newSlotId) {
-            const existingProducts = next.filter((r) => r.slot_id === newSlotId);
-            const newSlot = (slotsList ?? []).find((s) => s.id === newSlotId);
-            const newPerUnit = getSlotPerUnitCost(newSlot);
-            if (existingProducts.length <= 1) {
-              next = recalcSlotCharges(next, newSlotId, newTotalCharge || 0, newPerUnit);
-            } else {
-              const existingTotal = existingProducts[0].slot_total_charge || 0;
-              next = recalcSlotCharges(next, newSlotId, existingTotal, newPerUnit);
-            }
-          }
-        } else if (patch.slot_total_charge !== undefined) {
-          // Only total charge changed - recalculate this slot
-          if (newSlotId) {
-            const changedSlot = (slotsList ?? []).find((s) => s.id === newSlotId);
-            next = recalcSlotCharges(next, newSlotId, newTotalCharge || 0, getSlotPerUnitCost(changedSlot));
-          }
-        }
-      }
+      // Slot charge calculations are now handled by calcRow to ensure consistency
       return next;
     });
-  }, [slotsList]);
+  }, []);
 
   useEffect(() => { _patchRowRef = patchRow; }, [patchRow]);
 
