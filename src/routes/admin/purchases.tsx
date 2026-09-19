@@ -209,6 +209,10 @@ function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: numbe
   const total_delivery_packing_charges = totalDeliveryPacking + totalDelivery;
   const perUnitTotalCharges = perUnitPacking + perUnitDelivery;
   
+  // Other charges (flat total for the product line)
+  const otherCharges = Number(r.other_charges) || 0;
+  const perUnitOther = qty > 0 ? Math.round((otherCharges / qty) * 100) / 100 : 0;
+  
   // Subtotal = Retail Price + Delivery + Packing
   const subtotal = retail_price + totalDeliveryPacking + totalDelivery;
   
