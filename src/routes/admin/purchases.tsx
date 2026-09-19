@@ -192,6 +192,13 @@ function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: numbe
     ? Math.round(purchase_total * (1 + retailProfitPct / 100) * 100) / 100
     : Number(r.retail_selling_price) || 0;
   
+  // Wholesale Price = Purchase Total / Qty + (Wholesale Profit % × (Purchase Total / Qty))
+  const wholesaleProfitPct = Number(r.wholesale_profit_pct) || 0;
+  const unit_purchase_cost = purchase_total / qty;
+  const wholesale_price = wholesaleProfitPct > 0 && unit_purchase_cost > 0
+    ? Math.round(unit_purchase_cost * (1 + wholesaleProfitPct / 100) * 100) / 100
+    : Number(r.wholesale_price) || 0;
+  
   // Delivery + Packing charges (already in total from the form)
   const totalEnteredPacking = Number(r.delivery_packing_charge) || 0;
   const totalEnteredDelivery = Number(r.delivery_charge) || 0;
@@ -241,13 +248,11 @@ function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: numbe
     total_delivery_packing_charges: totalDeliveryPacking + totalDelivery,
     // Retail price is calculated from purchase total + profit
     retail_selling_price: retail_price,
-    // Wholesale is calculated from unit cost if no value
-    wholesale_price: wholesaleProfitPct > 0 && purchase_total > 0
-      ? Math.round(((purchase_total / qty) * (1 + wholesaleProfitPct / 100)) * 100) / 100
-      : Number(r.wholesale_price) || 0,
-    // Profit per piece is calculated from retail price and unit cost
-    profit_per_piece_pct: retail_price > 0 && (up + slotChargePerUnit) > 0
-      ? Math.round(((retail_price - (up + slotChargePerUnit)) / (up + slotChargePerUnit)) * 100 * 100) / 100
+    // Wholesale price is calculated from unit purchase cost + wholesale profit
+    wholesale_price: wholesale_price,
+    // Profit per piece is calculated from retail price and unit purchase cost
+    profit_per_piece_pct: retail_price > 0 && unit_purchase_cost > 0
+      ? Math.round(((retail_price - unit_purchase_cost) / unit_purchase_cost) * 100 * 100) / 100
       : 0,
     discount_amount: discount,
     gst_amount: gst,
