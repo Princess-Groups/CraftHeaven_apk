@@ -15,6 +15,7 @@ import {
   FileDown,
 } from "lucide-react";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 export const Route = createFileRoute("/admin/label-printing")({
   head: () => ({ meta: [{ title: "Label Printing — ACH Admin" }] }),
@@ -307,17 +308,12 @@ function LabelPrinting() {
     [batch?.id, selectedSlotId, qc]
   );
 
-  // Export label batch details to Excel (CSV format) for the client's label software
+  // Export label batch details to Excel for the client's label software
   const exportToExcel = useCallback(() => {
     if (!effectiveItems || effectiveItems.length === 0) {
       toast.error("No data to export");
       return;
     }
-
-    const esc = (value: string) => {
-      if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-      return value;
-    };
 
     const headers = [
       "Product Name",
@@ -337,26 +333,23 @@ function LabelPrinting() {
         product?.name ?? item.product_name,
         product?.sku ?? "",
         product?.barcode ?? item.barcode ?? "",
-        String(item.purchase_quantity),
-        String(item.labels_to_print),
-        exportPrice.toFixed(2),
+        item.purchase_quantity,
+        item.labels_to_print,
+        exportPrice,
       ];
     });
 
-    const csvContent = [headers.join(","), ...rows.map((r) => r.map(esc).join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `label-printing-${selectedSlotId || "slot"}-${new Date().toISOString().slice(0, 10)}.xlsx`;
-    link.click();
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${rows.length} items to Excel (CSV format)`);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws["!cols"] = [{ wch: 40 }, { wch: 18 }, { wch: 18 }, { wch: 13 }, { wch: 14 }, { wch: 18 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Label Printing");
+    XLSX.writeFile(wb, `label-printing-${selectedSlotId || "slot"}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success(`Exported ${rows.length} items to Excel`);
   }, [effectiveItems, currentProductsById, selectedSlotId]);
 
   // Export label batch details as a CSV file
   const exportToCsv = useCallback(() => {
-    if (!filteredItems || filteredItems.length === 0) {
+    if (!effectiveItems || effectiveItems.length === 0) {
       toast.error("No data to export");
       return;
     }
