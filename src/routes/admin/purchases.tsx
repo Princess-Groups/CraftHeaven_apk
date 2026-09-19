@@ -3212,12 +3212,12 @@ function Purchases() {
               {activeRow && (
                 <div className="flex items-center gap-4 mb-3">
                   <div className="text-xs text-muted-foreground">
-                    <span className="font-semibold">Single Product Cost:</span>{" "}
-                    <span className="font-bold text-primary text-sm">₹{Number(calculatedRows[editingIdx!]?.total_unit_cost ?? 0).toFixed(2)}</span>
+                    <span className="font-semibold">Single Product Final Price:</span>{" "}
+                    <span className="font-bold text-primary text-sm">₹{Number(calculatedRows[editingIdx!]?.single_product_final_price ?? 0).toFixed(2)}</span>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    <span className="font-semibold">Final Purchase Cost:</span>{" "}
-                    <span className="font-bold text-emerald-600 text-sm">₹{Number(calculatedRows[editingIdx!]?.final_purchase_cost ?? 0).toFixed(2)}</span>
+                    <span className="font-semibold">Final Price:</span>{" "}
+                    <span className="font-bold text-emerald-600 text-sm">₹{Number(calculatedRows[editingIdx!]?.total_final ?? 0).toFixed(2)}</span>
                   </div>
                 </div>
               )}
