@@ -199,12 +199,15 @@ function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: numbe
     ? Math.round(unit_purchase_cost * (1 + wholesaleProfitPct / 100) * 100) / 100
     : Number(r.wholesale_price) || 0;
   
-  // Delivery + Packing charges (already in total from the form)
+  // Delivery + Packing charges (entered as TOTAL for the product line)
   const totalEnteredPacking = Number(r.delivery_packing_charge) || 0;
   const totalEnteredDelivery = Number(r.delivery_charge) || 0;
+  const perUnitPacking = qty > 0 ? Math.round((totalEnteredPacking / qty) * 100) / 100 : 0;
+  const perUnitDelivery = qty > 0 ? Math.round((totalEnteredDelivery / qty) * 100) / 100 : 0;
   const totalDeliveryPacking = totalEnteredPacking;
   const totalDelivery = totalEnteredDelivery;
   const total_delivery_packing_charges = totalDeliveryPacking + totalDelivery;
+  const perUnitTotalCharges = perUnitPacking + perUnitDelivery;
   
   // Subtotal = Retail Price + Delivery + Packing
   const subtotal = retail_price + totalDeliveryPacking + totalDelivery;
@@ -249,6 +252,9 @@ function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: numbe
     total_delivery_packing: totalEnteredPacking,
     total_delivery: totalEnteredDelivery,
     total_delivery_packing_charges: totalDeliveryPacking + totalDelivery,
+    per_unit_delivery_packing: perUnitPacking,
+    per_unit_delivery: perUnitDelivery,
+    per_unit_total_charges: perUnitTotalCharges,
     // Retail price is calculated from purchase total + profit
     retail_selling_price: retail_price,
     // Wholesale price is calculated from unit purchase cost + wholesale profit
