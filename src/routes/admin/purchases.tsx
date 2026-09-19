@@ -92,6 +92,7 @@ type ProductRow = {
   gst_amount: number;
   discount: number;
   total_final: number;
+  single_product_final_price: number;
   cash_received_by: string;
   remark: string;
   mrp: number;
@@ -156,6 +157,7 @@ const blankRow = (serial: number): ProductRow => ({
   gst_amount: 0,
   discount: 0,
   total_final: 0,
+  single_product_final_price: 0,
   cash_received_by: "",
   remark: "",
   mrp: 0,
@@ -223,7 +225,8 @@ function calcRow(r: ProductRow): ProductRow {
     ? Math.round(final_purchase_cost * discountPct / 100 * 100) / 100
     : discountAmount;
 
-  const total_final = final_purchase_cost + totalDeliveryPacking + totalDelivery + gst - discount;
+  const total_final = final_purchase_cost + gst - discount;
+  const single_product_final_price = qty > 0 ? Math.round((total_final / qty) * 100) / 100 : 0;
 
   return {
     ...r,
@@ -246,6 +249,7 @@ function calcRow(r: ProductRow): ProductRow {
     discount_amount: discount,
     gst_amount: Math.round(gst * 100) / 100,
     total_final: Math.round(total_final * 100) / 100,
+    single_product_final_price: Math.round(single_product_final_price * 100) / 100,
   };
 }
 
@@ -2224,6 +2228,7 @@ function Purchases() {
     { key: "discount_pct", label: "Discount %", type: "number" },
     { key: "discount_amount", label: "Discount Amount (₹)", type: "number", ro: true },
     { key: "total_final", label: "Final Price (₹)", type: "number", ro: true },
+    { key: "single_product_final_price", label: "Single Product Final Price (₹)", type: "number", ro: true },
     { key: "cash_received_by", label: "Cash Received By (UPI/CASH/GPAY)", type: "select-payment" },
     { key: "remark", label: "Remark", type: "text" },
     { key: "mrp", label: "MRP (Maximum Retail Price)", type: "number" },
