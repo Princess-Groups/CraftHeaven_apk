@@ -238,6 +238,9 @@ function calcRow(r: ProductRow, slotsList: { id: string; packing_charges?: numbe
     total_unit: tu,
     total_unit_type: autoTotalUnitType,
     total_price: Math.round(up * qty * 100) / 100,
+    // Other charges per unit (flat total for the line)
+    other_charges: otherCharges,
+    per_unit_other: perUnitOther,
     // For purchase total: (Unit Price + Slot Charge per unit) × Quantity
     final_purchase_cost: purchase_total,
     // Slot charge per product is already stored in the row, we just use it
